@@ -193,7 +193,7 @@ class FederatedServer:
                     str(best_path),
                 )
                 print(
-                    f"  [Server] ★ NEW BEST MODEL saved | "
+                    f"  [Server] [BEST MODEL] saved | "
                     f"Round {round_num} | AUC={self.best_auc:.4f}"
                 )
 

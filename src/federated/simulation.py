@@ -119,7 +119,7 @@ class RoundLogger:
 
         with open(str(path), "w") as f:
             json.dump(self.rounds, f, indent=2, default=_serializable)
-        print(f"\n[Logger] Training log saved → {path}")
+        print(f"\n[Logger] Training log saved -> {path}")
         return str(path)
 
     def load(self, filename: str = "training_log.json") -> bool:
@@ -284,7 +284,7 @@ def main():
 
         # 7. Save checkpoint
         ckpt_path = server.save_checkpoint(round_num, metrics=eval_metrics)
-        print(f"  [Round {round_num+1}] Checkpoint saved → {ckpt_path}")
+        print(f"  [Round {round_num+1}] Checkpoint saved -> {ckpt_path}")
 
         # 8. Log round
         log_entry = {

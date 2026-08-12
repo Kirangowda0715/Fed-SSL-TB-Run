@@ -64,14 +64,10 @@ def ssl_local_train(
     num_epochs = config.ssl.epochs_per_round
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
-    # ── FedProx: store reference to global weights on device ─────────────
+    # ── FedProx setup ────────────────────────────────────────────────────
     is_fedprox = (global_weights is not None) and (config.federated.aggregation == "fedprox")
     mu = getattr(config.federated, "fedprox_mu", 0.01)
-    global_params_flat = None
 
-    if is_fedprox and global_weights is not None:
-        # Flatten all global encoder parameters into a single vector for proximal term
-        global_params_flat = _flatten_weights(global_weights, device)
 
     # ── Training loop ────────────────────────────────────────────────────
     epoch_losses: List[float] = []
@@ -101,12 +97,14 @@ def ssl_local_train(
             loss, _, _ = model(imgs)
 
             # FedProx proximal term: μ/2 * ||w_local - w_global||²
-            if is_fedprox and global_params_flat is not None:
-                local_params_flat = _flatten_encoder_params(model, device)
-                proximal_term = (mu / 2.0) * torch.sum(
-                    (local_params_flat - global_params_flat) ** 2
-                )
-                loss = loss + proximal_term
+            # Computed over live encoder parameters to preserve the autograd computational graph
+            if is_fedprox and global_weights is not None:
+                proximal_term = 0.0
+                for name, param in model.encoder.named_parameters():
+                    if name in global_weights:
+                        g_param = global_weights[name].to(device)
+                        proximal_term = proximal_term + torch.sum((param - g_param) ** 2)
+                loss = loss + (mu / 2.0) * proximal_term
 
             loss.backward()
 
@@ -140,19 +138,3 @@ def ssl_local_train(
         "epoch_losses": epoch_losses,
     }
 
-
-# ─── Helper: flatten weight tensors into a 1-D vector ───────────────────────
-
-def _flatten_weights(state_dict: Dict[str, Any], device: torch.device) -> torch.Tensor:
-    """Flatten a state_dict into a single 1-D parameter vector."""
-    return torch.cat([
-        v.to(device).float().flatten()
-        for v in state_dict.values()
-        if isinstance(v, torch.Tensor) and v.dtype.is_floating_point
-    ])
-
-
-def _flatten_encoder_params(model: nn.Module, device: torch.device) -> torch.Tensor:
-    """Flatten current encoder parameters of model into a 1-D vector."""
-    encoder_state = model.get_encoder_weights()
-    return _flatten_weights(encoder_state, device)

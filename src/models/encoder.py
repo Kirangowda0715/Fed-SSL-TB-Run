@@ -95,10 +95,16 @@ class ViTSmallEncoder(nn.Module):
         return z
 
 
+# ─── ViT-Tiny Encoder (Primary Lightweight Backbone) ─────────────────────────
+
 class ViTTinyEncoder(nn.Module):
     """
     ViT-Tiny (patch16, 224) from timm.
-    Head replaced with Linear(192 → embed_dim).
+    Primary lightweight backbone for privacy-preserving FedSSL TB detection.
+    
+    Dimensions:
+        - Input  : (B, 3, 224, 224)
+        - Latent : (B, 192) embedding
     """
 
     def __init__(self, embed_dim: int = 192):
@@ -106,12 +112,12 @@ class ViTTinyEncoder(nn.Module):
         try:
             import timm
         except ImportError:
-            raise ImportError("timm is required for ViT-Tiny encoder. pip install timm")
+            raise ImportError("timm is required for ViT-Tiny encoder. Run: pip install timm")
 
         self.vit = timm.create_model(
             "vit_tiny_patch16_224",
             pretrained=False,
-            num_classes=0,  # Returns CLS token (192-dim)
+            num_classes=0,  # Returns sequence or pooled features
         )
         vit_dim = self.vit.embed_dim   # 192 for vit_tiny
         self.projection = nn.Linear(vit_dim, embed_dim)
@@ -121,35 +127,39 @@ class ViTTinyEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
+        Extract global feature embedding using mean pooling across patch tokens.
+        This matches the representation learned during MAE pre-training.
+
         Args:
-            x : (B, C, 224, 224) image tensor
+            x : (B, C, H, W) image tensor
         Returns:
             z : (B, embed_dim) embedding
         """
-        feat = self.vit(x)             # (B, 192)
-        z = self.projection(feat)      # (B, embed_dim)
+        # Patch embed + positional embedding over 196 patches
+        tokens = self.vit.patch_embed(x)
+        tokens = tokens + self.vit.pos_embed[:, 1:, :]  # 196 patch tokens
+        tokens = self.vit.pos_drop(tokens)
+
+        # Pass patch tokens through Transformer blocks
+        for block in self.vit.blocks:
+            tokens = block(tokens)
+        tokens = self.vit.norm(tokens)
+
+        # Mean patch token pooling -> projection
+        pooled = tokens.mean(dim=1)  # (B, 192)
+        z = self.projection(pooled)   # (B, embed_dim)
         return z
 
 
 # ─── Factory ─────────────────────────────────────────────────────────────────
 
-def get_encoder(backbone: str = "resnet50", embed_dim: int = 512) -> nn.Module:
+def get_encoder(backbone: str = "vit_tiny", embed_dim: int = 192) -> nn.Module:
     """
-    Create and return the encoder backbone.
+    Create and return the ViT-Tiny encoder backbone.
 
     Args:
-        backbone  : 'resnet50', 'vit_small', or 'vit_tiny'
-        embed_dim : Output embedding dimensionality
+        backbone  : 'vit_tiny' (recommended lightweight backbone)
+        embed_dim : Output embedding dimensionality (default 192)
     """
-    backbone = backbone.lower().strip()
+    return ViTTinyEncoder(embed_dim=embed_dim)
 
-    if backbone == "resnet50":
-        return ResNet50Encoder(embed_dim=embed_dim)
-    elif backbone in ("vit_small", "vit-small"):
-        return ViTSmallEncoder(embed_dim=embed_dim)
-    elif backbone in ("vit_tiny", "vit-tiny", "tiny_vit"):
-        return ViTTinyEncoder(embed_dim=embed_dim)
-    else:
-        raise ValueError(
-            f"Unknown backbone '{backbone}'. Choose from: 'resnet50', 'vit_small', 'vit_tiny'."
-        )

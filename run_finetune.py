@@ -31,23 +31,31 @@ from src.utils.config import load_config
 from src.datasets.loader import ShenzhenDataset, MontgomeryDataset, get_eval_transform
 
 
-def build_pretrained_encoder(device):
-    """Load ImageNet-pretrained ViT-Tiny from timm."""
-    try:
-        import timm
-    except ImportError:
-        raise ImportError("timm is required. Run: pip install timm")
-
-    model = timm.create_model(
-        "vit_tiny_patch16_224",
-        pretrained=True,
-        num_classes=0,     # Returns CLS token (192-dim), no classification head
-    )
-    model.to(device).eval()
-    for p in model.parameters():
+def load_fl_encoder(config, device):
+    """Load the Federated SSL trained ViT-Tiny encoder from checkpoint."""
+    from src.models.encoder import get_encoder
+    encoder = get_encoder(config.model.backbone, config.model.embed_dim)
+    
+    ckpt_dir = Path(config.logging.checkpoint_dir)
+    best_ckpt = ckpt_dir / "best_encoder.pt"
+    
+    if not best_ckpt.exists():
+        ckpts = sorted(ckpt_dir.glob("encoder_round_*.pt"), key=lambda x: int(x.stem.split("_")[-1]))
+        if ckpts:
+            best_ckpt = ckpts[-1]
+            
+    if best_ckpt.exists():
+        ckpt = torch.load(best_ckpt, map_location=device)
+        state = ckpt["encoder_state_dict"] if isinstance(ckpt, dict) and "encoder_state_dict" in ckpt else ckpt
+        encoder.load_state_dict(state)
+        print(f"[Encoder] Loaded FL trained ViT-Tiny encoder: {best_ckpt.name}")
+    else:
+        print("[Encoder] WARNING: No FL checkpoint found, using initial ViT-Tiny encoder")
+        
+    encoder.to(device).eval()
+    for p in encoder.parameters():
         p.requires_grad = False
-    print("[Encoder] ViT-Tiny loaded (ImageNet pretrained, embed_dim=192)")
-    return model
+    return encoder
 
 
 def main():
@@ -55,8 +63,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # 1. Load pretrained encoder
-    encoder = build_pretrained_encoder(device)
+    # 1. Load FL trained encoder
+    encoder = load_fl_encoder(config, device)
+
 
     # 2. Build linear classification head
     embed_dim   = 192   # ViT-Tiny CLS token dimensionality

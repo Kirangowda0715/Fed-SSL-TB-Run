@@ -114,7 +114,7 @@ class NIHDataset(Dataset):
 class ShenzhenDataset(Dataset):
     """
     Smart loader for the Shenzhen TB dataset.
-    Detects labels from filenames: _0.png (Normal), _1.png (TB).
+    Supports either folder-based labels or filename suffix labels.
     """
 
     def __init__(
@@ -129,18 +129,36 @@ class ShenzhenDataset(Dataset):
         self.image_paths: List[Path] = []
         self.labels: List[int] = []
 
-        all_imgs = []
-        for ext in ("*.png", "*.jpg"):
-            all_imgs.extend(list(self.root_dir.rglob(ext)))
-        
-        for p in sorted(all_imgs):
-            name = p.stem
-            if name.endswith("_0"):
-                self.labels.append(0)
-                self.image_paths.append(p)
-            elif name.endswith("_1"):
-                self.labels.append(1)
-                self.image_paths.append(p)
+        def _collect_images(src_dir: Path, label: int) -> None:
+            for ext in ("*.png", "*.jpg", "*.jpeg"):
+                for p in sorted(src_dir.rglob(ext)):
+                    self.image_paths.append(p)
+                    self.labels.append(label)
+
+        tb_dir = self.root_dir / "TB"
+        normal_dir = self.root_dir / "Normal"
+        pos_dir = self.root_dir / "Positive"
+        neg_dir = self.root_dir / "Negative"
+
+        if tb_dir.exists() and normal_dir.exists():
+            _collect_images(tb_dir, 1)
+            _collect_images(normal_dir, 0)
+        elif pos_dir.exists() and neg_dir.exists():
+            _collect_images(pos_dir, 1)
+            _collect_images(neg_dir, 0)
+        else:
+            all_imgs = []
+            for ext in ("*.png", "*.jpg", "*.jpeg"):
+                all_imgs.extend(list(self.root_dir.rglob(ext)))
+            
+            for p in sorted(all_imgs):
+                name = p.stem
+                if name.endswith("_0"):
+                    self.labels.append(0)
+                    self.image_paths.append(p)
+                elif name.endswith("_1"):
+                    self.labels.append(1)
+                    self.image_paths.append(p)
 
         print(f"Shenzhen Dataset: Found {len(self.image_paths)} images.")
 
@@ -162,7 +180,7 @@ class ShenzhenDataset(Dataset):
 class MontgomeryDataset(Dataset):
     """
     Smart loader for the Montgomery TB dataset.
-    Detects labels from filenames: _0.png (Normal), _1.png (TB).
+    Supports either folder-based labels or filename suffix labels.
     """
 
     def __init__(
@@ -177,18 +195,36 @@ class MontgomeryDataset(Dataset):
         self.image_paths: List[Path] = []
         self.labels: List[int] = []
 
-        all_imgs = []
-        for ext in ("*.png", "*.jpg"):
-            all_imgs.extend(list(self.root_dir.rglob(ext)))
-        
-        for p in sorted(all_imgs):
-            name = p.stem
-            if name.endswith("_0"):
-                self.labels.append(0)
-                self.image_paths.append(p)
-            elif name.endswith("_1"):
-                self.labels.append(1)
-                self.image_paths.append(p)
+        def _collect_images(src_dir: Path, label: int) -> None:
+            for ext in ("*.png", "*.jpg", "*.jpeg"):
+                for p in sorted(src_dir.rglob(ext)):
+                    self.image_paths.append(p)
+                    self.labels.append(label)
+
+        tb_dir = self.root_dir / "TB"
+        normal_dir = self.root_dir / "Normal"
+        pos_dir = self.root_dir / "Positive"
+        neg_dir = self.root_dir / "Negative"
+
+        if tb_dir.exists() and normal_dir.exists():
+            _collect_images(tb_dir, 1)
+            _collect_images(normal_dir, 0)
+        elif pos_dir.exists() and neg_dir.exists():
+            _collect_images(pos_dir, 1)
+            _collect_images(neg_dir, 0)
+        else:
+            all_imgs = []
+            for ext in ("*.png", "*.jpg", "*.jpeg"):
+                all_imgs.extend(list(self.root_dir.rglob(ext)))
+            
+            for p in sorted(all_imgs):
+                name = p.stem
+                if name.endswith("_0"):
+                    self.labels.append(0)
+                    self.image_paths.append(p)
+                elif name.endswith("_1"):
+                    self.labels.append(1)
+                    self.image_paths.append(p)
 
         print(f"Montgomery Dataset: Found {len(self.image_paths)} images.")
 

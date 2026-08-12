@@ -19,7 +19,7 @@ ssl:
   epochs_per_round: 2
   batch_size: 4
   lr: 0.0001
-  limit_samples: 20000  # Ultimate run: 20,000 images
+  limit_samples: 5000  # Ultimate run: 20,000 images
   optimizer: adamw
 
 federated:

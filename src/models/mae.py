@@ -170,45 +170,20 @@ class MaskedAutoencoder(nn.Module):
     # ─── Encode ──────────────────────────────────────────────────────────────
 
     def _tokenize(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Convert image to per-patch tokens.
-
-        For ResNet: patchify → linear embed → (B, num_patches, embed_dim)
-        For ViT   : timm handles patch embedding internally
-        """
-        if self._is_resnet:
-            # Patchify image to raw pixel patches
-            raw_patches = self.patchify(x)              # (B, N, P²C)
-            # Linear embed raw patches → embed_dim
-            tokens = self.patch_embed(raw_patches)      # (B, N, embed_dim)
-            tokens = tokens + self.pos_embed
-            tokens = self.pre_norm(tokens)
-        else:
-            # ViT: use timm internal patch embedding
-            tokens = self.encoder.vit.patch_embed(x)              # (B, N, D_vit)
-            tokens = tokens + self.encoder.vit.pos_embed[:, 1:, :]  # skip CLS
-            tokens = self.encoder.vit.pos_drop(tokens)
+        """Convert image to per-patch tokens using ViT patch embedding."""
+        tokens = self.encoder.vit.patch_embed(x)              # (B, N, D_vit)
+        tokens = tokens + self.encoder.vit.pos_embed[:, 1:, :]  # 196 patch tokens (skip CLS)
+        tokens = self.encoder.vit.pos_drop(tokens)
         return tokens
 
     def _encode_visible(self, visible_tokens: torch.Tensor) -> torch.Tensor:
-        """
-        Encode visible patch tokens.
-
-        ResNet path: lightweight per-patch MLP (all in embed_dim space)
-        ViT path   : run transformer blocks → project to embed_dim
-        """
-        if self._is_resnet:
-            # Per-patch MLP encoding — stays in embed_dim space
-            z = self.patch_encoder(visible_tokens)     # (B, num_visible, embed_dim)
-            return z
-        else:
-            # Run ViT transformer blocks on visible tokens
-            x = visible_tokens
-            for block in self.encoder.vit.blocks:
-                x = block(x)
-            x = self.encoder.vit.norm(x)               # (B, num_visible, D_vit)
-            z = self.encoder.projection(x)             # (B, num_visible, embed_dim)
-            return z
+        """Run ViT transformer blocks on visible patch tokens -> project to embed_dim."""
+        x = visible_tokens
+        for block in self.encoder.vit.blocks:
+            x = block(x)
+        x = self.encoder.vit.norm(x)               # (B, num_visible, D_vit)
+        z = self.encoder.projection(x)             # (B, num_visible, embed_dim)
+        return z
 
     # ─── Forward (MAE Loss) ──────────────────────────────────────────────────
 
@@ -224,7 +199,7 @@ class MaskedAutoencoder(nn.Module):
             pred   : (B, num_patches, patch_size²×C) reconstructed patches
             mask   : (B, num_patches) binary mask
         """
-        # Handle two-view tuple from NIHDataset (use view1 only for MAE)
+        # Handle two-view tuple from NIHDataset
         if isinstance(x, (list, tuple)):
             x = x[0]
 
@@ -258,9 +233,7 @@ class MaskedAutoencoder(nn.Module):
 
     def get_encoder_weights(self) -> Dict[str, Any]:
         """
-        Return only the encoder state_dict.
-        This is what gets shared with the federated server.
-        The decoder weights remain local.
+        Return only the encoder state_dict for federated server sharing.
         """
         return {k: v.clone() for k, v in self.encoder.state_dict().items()}
 
@@ -271,7 +244,7 @@ class MaskedAutoencoder(nn.Module):
     def get_embedding(self, x: torch.Tensor) -> torch.Tensor:
         """
         Get a global image embedding (for fine-tuning / evaluation).
-        Uses full image (no masking).
+        Uses full image with mean-patch token pooling.
 
         Args:
             x : (B, C, H, W)
@@ -280,17 +253,14 @@ class MaskedAutoencoder(nn.Module):
         """
         if isinstance(x, (list, tuple)):
             x = x[0]
-        if self._is_resnet:
-            return self.encoder(x)
-        else:
-            return self.encoder(x)
+        return self.encoder(x)
 
 
 # ─── Factory ─────────────────────────────────────────────────────────────────
 
 def build_mae(
-    backbone: str = "resnet50",
-    embed_dim: int = 512,
+    backbone: str = "vit_tiny",
+    embed_dim: int = 192,
     mask_ratio: float = 0.75,
     decoder_depth: int = 4,
     image_size: int = 224,
@@ -298,16 +268,16 @@ def build_mae(
     in_channels: int = 3,
 ) -> MaskedAutoencoder:
     """
-    Build a full MaskedAutoencoder model from config parameters.
+    Build a full MaskedAutoencoder model with ViT-Tiny backbone.
 
     Args:
-        backbone      : 'resnet50' or 'vit_small'
-        embed_dim     : Embedding dimensionality
-        mask_ratio    : Fraction of patches to mask
-        decoder_depth : Number of Transformer decoder blocks
-        image_size    : Input image resolution
-        patch_size    : Patch size in pixels
-        in_channels   : Number of image channels
+        backbone      : 'vit_tiny'
+        embed_dim     : Embedding dimensionality (192 for vit_tiny)
+        mask_ratio    : Fraction of patches to mask (default 0.75)
+        decoder_depth : Number of Transformer decoder blocks (default 4)
+        image_size    : Input image resolution (default 224)
+        patch_size    : Patch size in pixels (default 16)
+        in_channels   : Number of image channels (default 3)
 
     Returns:
         MaskedAutoencoder model
@@ -332,3 +302,4 @@ def build_mae(
         patch_size=patch_size,
         in_channels=in_channels,
     )
+

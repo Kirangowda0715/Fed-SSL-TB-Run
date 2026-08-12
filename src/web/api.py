@@ -48,29 +48,24 @@ classifier = None
 use_linear = False
 
 
-def _load_pretrained_vit():
-    import timm
-    model = timm.create_model("vit_tiny_patch16_224", pretrained=True, num_classes=0)
-    model.eval()
-    for p in model.parameters():
-        p.requires_grad = False
-    print("[Startup] ImageNet ViT-Tiny loaded (embed_dim=192)")
-    return model
-
-
 def _load_fl_encoder():
     enc      = get_encoder(config.model.backbone, config.model.embed_dim)
     ckpt_dir = Path(config.logging.checkpoint_dir)
-    ckpts    = sorted(ckpt_dir.glob("encoder_round_*.pt"),
-                      key=lambda x: int(x.stem.split("_")[-1]))
-    if ckpts:
-        latest = ckpts[-1]
-        ckpt   = torch.load(latest, map_location=device, weights_only=False)
+    best_ckpt = ckpt_dir / "best_encoder.pt"
+    
+    if not best_ckpt.exists():
+        ckpts = sorted(ckpt_dir.glob("encoder_round_*.pt"),
+                       key=lambda x: int(x.stem.split("_")[-1]))
+        if ckpts:
+            best_ckpt = ckpts[-1]
+
+    if best_ckpt.exists():
+        ckpt   = torch.load(best_ckpt, map_location=device, weights_only=False)
         state  = ckpt["encoder_state_dict"] if isinstance(ckpt, dict) and "encoder_state_dict" in ckpt else ckpt
         enc.load_state_dict(state)
-        print(f"[Startup] FL encoder loaded: {latest.name}")
+        print(f"[Startup] FL encoder loaded: {best_ckpt.name}")
     else:
-        print("[Startup] WARNING: No FL checkpoint found, using random encoder")
+        print("[Startup] WARNING: No FL checkpoint found, using initial ViT-Tiny encoder")
     enc.eval()
     for p in enc.parameters():
         p.requires_grad = False
@@ -82,56 +77,40 @@ async def load_models():
     global encoder, classifier, use_linear
 
     print(f"[Startup] Device: {device}")
-    ckpt_dir         = Path(config.logging.checkpoint_dir)
-    linear_head_path = ckpt_dir / "linear_head.pt"
+    encoder = _load_fl_encoder().to(device)
 
-    if linear_head_path.exists():
-        # ── Mode A: Pretrained ViT-Tiny + linear head ─────────────────────────
-        print("[Startup] Mode A: ImageNet ViT-Tiny + Linear Probe")
-        encoder = _load_pretrained_vit().to(device)
+    # ── Initialize 5-shot Prototypical Classifier ──────────────────────────
+    print("[Startup] Initializing 5-shot Prototypical Classifier with FL-trained encoder...")
+    proto = PrototypicalHead(embed_dim=config.model.embed_dim, num_classes=2)
+    try:
+        ds = ShenzhenDataset(
+            root_dir=config.data.shenzhen_path,
+            transform=transform,
+            image_size=config.data.image_size,
+        )
+        k = config.finetuning.few_shot_k
+        idx, c0, c1 = [], 0, 0
+        for i, lbl in enumerate(ds.labels):
+            if lbl == 0 and c0 < k:   idx.append(i); c0 += 1
+            elif lbl == 1 and c1 < k:  idx.append(i); c1 += 1
+            if c0 >= k and c1 >= k:    break
 
-        head = nn.Linear(192, 2)
-        head.load_state_dict(torch.load(linear_head_path, map_location=device, weights_only=False))
-        head.to(device).eval()
-        classifier = head
-        use_linear = True
-        print("[Startup] Ready (Linear Probe mode)")
+        loader = DataLoader(Subset(ds, idx), batch_size=len(idx), shuffle=False)
+        with torch.no_grad():
+            imgs, lbls = next(iter(loader))
+            embs = encoder(imgs.to(device))
+            proto.compute_prototypes(embs, lbls.to(device))
+            _, probs = proto.predict(embs)
+            acc = (probs.argmax(-1).cpu() == lbls).float().mean().item()
+        print(f"[Startup] Prototypes ready — support self-accuracy: {acc:.1%}")
+    except Exception as e:
+        print(f"[Startup] Prototype warning: {e} (Will compute on first inference if data added)")
 
-    else:
-        # ── Mode B: FL encoder + 5-shot prototypical ──────────────────────────
-        print("[Startup] Mode B: FL encoder + 5-shot Prototypical (run run_finetune.py for better accuracy)")
-        encoder = _load_fl_encoder().to(device)
+    proto.to(device).eval()
+    classifier = proto
+    use_linear = False
+    print("[Startup] Ready (FL Prototypical mode)")
 
-        proto = PrototypicalHead(embed_dim=config.model.embed_dim, num_classes=2)
-        try:
-            ds = ShenzhenDataset(
-                root_dir=config.data.shenzhen_path,
-                transform=transform,
-                image_size=config.data.image_size,
-            )
-            k = config.finetuning.few_shot_k
-            idx, c0, c1 = [], 0, 0
-            for i, lbl in enumerate(ds.labels):
-                if lbl == 0 and c0 < k:   idx.append(i); c0 += 1
-                elif lbl == 1 and c1 < k:  idx.append(i); c1 += 1
-                if c0 >= k and c1 >= k:    break
-
-            loader = DataLoader(Subset(ds, idx), batch_size=len(idx), shuffle=False)
-            with torch.no_grad():
-                imgs, lbls = next(iter(loader))
-                embs = encoder(imgs.to(device))
-                proto.compute_prototypes(embs, lbls.to(device))
-                _, probs = proto.predict(embs)
-                acc = (probs.argmax(-1).cpu() == lbls).float().mean().item()
-            print(f"[Startup] Prototypes ready — support self-accuracy: {acc:.1%}")
-        except Exception as e:
-            print(f"[Startup] Prototype ERROR: {e}")
-            import traceback; traceback.print_exc()
-
-        proto.to(device).eval()
-        classifier = proto
-        use_linear = False
-        print("[Startup] Ready (Prototypical mode)")
 
 
 @app.get("/health")
