@@ -188,28 +188,51 @@ def main():
 # --- Initialize server & global model ---
     server = FederatedServer(config, device=device)
     global_model = server.initialize_global_model()
-    logger = RoundLogger(config.logging.log_dir)
 
 # --- Resume logic ---
     start_round = 0
+    logger = None  # Will be initialized after resume decision
+    
     if resume:
+        print(f"\n[Resume] Attempting to restore from checkpoint & history...")
         ckpt_dir = Path(config.logging.checkpoint_dir)
         ckpts = list(ckpt_dir.glob("encoder_round_*.pt"))
+        
+        # Always try to load logger history when resuming (checkpoint may or may not exist)
+        logger = RoundLogger(config.logging.log_dir)
+        history_loaded = logger.load()
+        
         if ckpts:
             # Sort by round number in filename
             ckpts.sort(key=lambda x: int(x.stem.split("_")[-1]))
             latest_ckpt = ckpts[-1]
             latest_round = int(latest_ckpt.stem.split("_")[-1])
             
-            print(f"\n[Resume] Found checkpoint: {latest_ckpt.name}")
+            print(f"[Resume] Found checkpoint: {latest_ckpt.name}")
             server.load_checkpoint(str(latest_ckpt))
             
-            # Load history if possible
-            logger.load()
             start_round = latest_round + 1
-            print(f"[Resume] Ready to continue from Round {start_round + 1}\n")
+            print(f"[Resume] Checkpoint loaded from round {latest_round}")
+            print(f"[Resume] Ready to continue from Round {start_round + 1}")
+            if history_loaded:
+                print(f"[Resume] Restored {len(logger.rounds)} previous rounds from log\n")
+            else:
+                print(f"[Resume] WARNING: Could not restore training history\n")
         else:
-            print("\n[Resume] No checkpoints found in", ckpt_dir, "starting from scratch.\n")
+            print(f"[Resume] No checkpoints found in {ckpt_dir}")
+            if history_loaded:
+                print(f"[Resume] But restored {len(logger.rounds)} rounds from training log")
+                # Infer start_round from loaded history
+                if logger.rounds:
+                    latest_logged_round = max(h["round"] for h in logger.rounds)
+                    start_round = latest_logged_round + 1
+                    print(f"[Resume] Continuing from round {start_round}\n")
+            else:
+                print(f"[Resume] No checkpoint or history found. Starting from scratch.\n")
+    
+    # Initialize fresh logger if not resuming
+    if logger is None:
+        logger = RoundLogger(config.logging.log_dir)
 
     # -- Federated Loop ---------------------------------------------------
     print(f"\n[Simulation] Starting federated training for {config.federated.rounds} rounds...\n")
