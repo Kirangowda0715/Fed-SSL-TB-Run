@@ -4,26 +4,26 @@ data:
   montgomery_path: "data/raw/Montgomery"
   processed_dir: "data/processed"
   image_size: 224
-  num_hospitals: 5
+  num_hospitals: 10
   split_strategy: non_iid   # options: iid, non_iid
-  split_alpha: 2.0          # Balance parameter for non-iid split
+  split_alpha: 1.0          # Balance parameter for non-iid split
 
 
 model:
   backbone: "vit_tiny"        # options: resnet50, vit_small
   embed_dim: 192
-  mask_ratio: 0.75
+  mask_ratio: 0.80
   decoder_depth: 4
 
 ssl:
   epochs_per_round: 2
-  batch_size: 4
-  lr: 0.0001
-  limit_samples: 5000  # Ultimate run: 20,000 images
+  batch_size: 8
+  lr: 1.0e-3
+  limit_samples: 20000
   optimizer: adamw
 
 federated:
-  rounds: 20            # Ultimate run: 20 rounds
+  rounds: 20
   aggregation: fedprox       # options: fedavg, fedprox
   fedprox_mu: 0.01
 

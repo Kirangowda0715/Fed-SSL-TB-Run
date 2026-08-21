@@ -9,8 +9,7 @@ data:
 
   image_size: 224
 
-  num_hospitals: 5
-
+  num_hospitals: 10
   split_strategy: non_iid
   split_alpha: 1.0
 
