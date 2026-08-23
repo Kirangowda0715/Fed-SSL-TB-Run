@@ -69,9 +69,11 @@ class PrototypicalHead(nn.Module):
         Returns:
             prototypes : (num_classes, embed_dim)
         """
+        device = support_embeddings.device
+        support_labels = support_labels.to(device)
         prototypes = torch.zeros(
             self.num_classes, self.embed_dim,
-            device=support_embeddings.device,
+            device=device,
             dtype=support_embeddings.dtype,
         )
         for c in range(self.num_classes):
@@ -108,6 +110,9 @@ class PrototypicalHead(nn.Module):
                 )
             prototypes = self.prototypes
 
+        # Ensure prototypes are on the same device as queries
+        prototypes = prototypes.to(query_embeddings.device)
+
         return self._prototypical_logits(query_embeddings, prototypes)
 
     def _prototypical_logits(
@@ -125,6 +130,8 @@ class PrototypicalHead(nn.Module):
         Returns:
             probs : (B, C)
         """
+        # Ensure both tensors are on the same device (derive from queries)
+        protos = protos.to(queries.device)
         # (B, 1, D) - (1, C, D) → (B, C, D)
         diffs = queries.unsqueeze(1) - protos.unsqueeze(0)
         # Squared Euclidean distance: (B, C)
@@ -152,6 +159,8 @@ class PrototypicalHead(nn.Module):
         """CE loss over prototypical probabilities."""
         probs = self.forward(query_embeddings, prototypes)
         log_probs = torch.log(probs + 1e-8)
+        # Ensure labels are on same device as log_probs
+        query_labels = query_labels.to(log_probs.device)
         loss = F.nll_loss(log_probs, query_labels)
         return loss, probs
 
@@ -188,9 +197,11 @@ class PrototypicalHead(nn.Module):
         support_labels: torch.Tensor,
     ) -> torch.Tensor:
         """Same as compute_prototypes but retains grad for training."""
+        device = support_embeddings.device
+        support_labels = support_labels.to(device)
         prototypes = torch.zeros(
             self.num_classes, self.embed_dim,
-            device=support_embeddings.device,
+            device=device,
             dtype=support_embeddings.dtype,
         )
         for c in range(self.num_classes):

@@ -4,11 +4,16 @@ src/client/local_train.py
 Few-shot fine-tuning using Prototypical Networks on the Shenzhen TB dataset.
 
 Process:
-  1. Freeze encoder (or use very low LR)
-  2. Sample k-shot support set per class (k = config.finetuning.few_shot_k)
-  3. Compute class prototypes from support embeddings
-  4. Fine-tune prototypical head on remaining query samples
+  1. Split Shenzhen into k-shot support set + query set
+  2. Each epoch: pass images through LIVE encoder → compute prototypes → prototypical loss
+  3. Backprop through encoder to fine-tune representations
+  4. Evaluate on query set with final prototypes
   5. Return fine-tuned model + validation metrics
+
+Key fix (v2): The encoder must be unfrozen and embeddings must be computed
+through the live computational graph each epoch. Pre-extracting embeddings
+with torch.no_grad() and then trying to "train" on them produces zero gradients
+because the computation graph is severed.
 """
 
 import copy
@@ -34,33 +39,34 @@ def finetune_local(
     device: Optional[torch.device] = None,
 ) -> Tuple[PrototypicalHead, Dict[str, Any]]:
     """
-    Few-shot fine-tuning of the prototypical head on Shenzhen TB data.
+    Few-shot fine-tuning of the encoder using prototypical loss on Shenzhen TB data.
+
+    The encoder is fine-tuned (not frozen) so that gradients flow from the
+    prototypical loss back through the encoder, enabling actual learning.
 
     Args:
         hospital_id     : Hospital ID (for logging)
-        encoder         : Pre-trained encoder (ResNet50 / ViT-Small)
+        encoder         : Pre-trained encoder (ViT-Tiny)
         shenzhen_loader : DataLoader for ShenzhenDataset
         config          : Loaded config SimpleNamespace
         device          : torch.device
 
     Returns:
-        proto_head      : Fine-tuned PrototypicalHead
+        proto_head      : PrototypicalHead (with computed prototypes)
         metrics         : Dict with AUC, accuracy, sensitivity, specificity, F1
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     encoder = encoder.to(device)
-    encoder.eval()  # Freeze encoder
-
-    k = config.finetuning.few_shot_k
+    embed_dim = _get_embed_dim(encoder, device)
     num_classes = 2  # 0=Normal, 1=TB
-    embed_dim = _get_embed_dim(encoder)
+    k = config.finetuning.few_shot_k
 
-    # ── 1. Collect all embeddings + labels from Shenzhen ─────────────────
-    all_embeddings, all_labels = _extract_embeddings(encoder, shenzhen_loader, device)
+    # ── 1. Collect all images + labels from the DataLoader ────────────────
+    all_images, all_labels = _collect_images_and_labels(shenzhen_loader)
 
-    if len(all_embeddings) == 0:
+    if len(all_images) == 0:
         print(f"  [Hospital {hospital_id}] No Shenzhen data — skipping fine-tuning.")
         proto_head = PrototypicalHead(embed_dim=embed_dim, num_classes=num_classes)
         return proto_head, {}
@@ -68,42 +74,79 @@ def finetune_local(
     # ── 2. Sample k-shot support set (k per class) ────────────────────────
     support_idx, query_idx = _sample_kshot(all_labels, k=k, num_classes=num_classes)
 
-    support_emb = all_embeddings[support_idx]
-    support_lbl = all_labels[support_idx]
-    query_emb   = all_embeddings[query_idx]
-    query_lbl   = all_labels[query_idx]
+    support_images = all_images[support_idx].to(device)
+    support_labels = all_labels[support_idx].to(device)
+    query_images   = all_images[query_idx].to(device)
+    query_labels   = all_labels[query_idx].to(device)
 
     # ── 3. Initialize prototypical head ──────────────────────────────────
     proto_head = PrototypicalHead(embed_dim=embed_dim, num_classes=num_classes).to(device)
 
-    # Compute initial prototypes from support set
-    with torch.no_grad():
-        proto_head.compute_prototypes(support_emb, support_lbl)
+    # ── 4. Fine-tune encoder on prototypical loss ─────────────────────────
+    # Unfreeze encoder for fine-tuning with a small learning rate
+    encoder.train()
+    for param in encoder.parameters():
+        param.requires_grad = True
 
-    # ── 4. Fine-tune on query set ─────────────────────────────────────────
-    optimizer = AdamW(proto_head.parameters(), lr=config.finetuning.lr, weight_decay=1e-4)
+    optimizer = AdamW(encoder.parameters(), lr=config.finetuning.lr, weight_decay=1e-4)
     num_epochs = config.finetuning.epochs
 
-    proto_head.train()
+    # Mini-batch the query set for memory efficiency
+    query_batch_size = min(64, len(query_images))
+
     for epoch in range(num_epochs):
         optimizer.zero_grad()
-        prototypes = proto_head.get_learnable_prototypes(support_emb, support_lbl)
-        loss, probs = proto_head.prototypical_loss(query_emb, query_lbl, prototypes)
-        if loss.requires_grad:
-            loss.backward()
-            optimizer.step()
+
+        # Compute support embeddings through live encoder (with grad)
+        support_emb = encoder(support_images)
+        # Compute prototypes from live support embeddings (retains grad)
+        prototypes = proto_head.get_learnable_prototypes(support_emb, support_labels)
+
+        # Compute query embeddings through live encoder (with grad)
+        # For large query sets, process in mini-batches and accumulate loss
+        total_loss = torch.tensor(0.0, device=device)
+        total_correct = 0
+        total_count = 0
+
+        for start in range(0, len(query_images), query_batch_size):
+            end = min(start + query_batch_size, len(query_images))
+            q_imgs = query_images[start:end]
+            q_lbls = query_labels[start:end]
+
+            q_emb = encoder(q_imgs)
+            batch_loss, batch_probs = proto_head.prototypical_loss(q_emb, q_lbls, prototypes)
+            total_loss = total_loss + batch_loss * len(q_lbls)
+            total_correct += (batch_probs.argmax(dim=-1) == q_lbls).sum().item()
+            total_count += len(q_lbls)
+
+        mean_loss = total_loss / max(total_count, 1)
+        mean_loss.backward()
+
+        # Gradient clipping for stability
+        nn.utils.clip_grad_norm_(encoder.parameters(), max_norm=1.0)
+        optimizer.step()
 
         if (epoch + 1) % max(1, num_epochs // 3) == 0:
-            acc = (probs.argmax(dim=-1) == query_lbl).float().mean().item()
-            print(f"    Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Acc: {acc:.4f}")
+            acc = total_correct / max(total_count, 1)
+            print(f"    Epoch {epoch+1}/{num_epochs} | Loss: {mean_loss.item():.4f} | Acc: {acc:.4f}")
 
     # ── 5. Evaluate on query set ──────────────────────────────────────────
+    encoder.eval()
     proto_head.eval()
     with torch.no_grad():
-        prototypes = proto_head.compute_prototypes(support_emb, support_lbl)
-        _, probs = proto_head.predict(query_emb, prototypes)
-        tb_probs = probs[:, 1].cpu().numpy()     # prob of TB class
-        y_true   = query_lbl.cpu().numpy()
+        support_emb = encoder(support_images)
+        prototypes = proto_head.compute_prototypes(support_emb, support_labels)
+
+        # Evaluate on query set
+        all_probs_list = []
+        for start in range(0, len(query_images), query_batch_size):
+            end = min(start + query_batch_size, len(query_images))
+            q_emb = encoder(query_images[start:end])
+            _, probs = proto_head.predict(q_emb, prototypes)
+            all_probs_list.append(probs[:, 1].cpu())
+
+        tb_probs = torch.cat(all_probs_list).numpy()
+        y_true   = query_labels.cpu().numpy()
 
     metrics = evaluate(y_true, tb_probs)
     print(
@@ -151,10 +194,10 @@ def evaluate_on_montgomery(
     k = config.finetuning.few_shot_k
     if len(support_emb) > 0:
         support_idx, _ = _sample_kshot(support_lbl, k=k, num_classes=2)
-        support_emb = support_emb[support_idx]
-        support_lbl = support_lbl[support_idx]
+        support_emb_k = support_emb[support_idx].to(device)
+        support_lbl_k = support_lbl[support_idx].to(device)
         with torch.no_grad():
-            prototypes = proto_head.compute_prototypes(support_emb, support_lbl)
+            prototypes = proto_head.compute_prototypes(support_emb_k, support_lbl_k)
     else:
         prototypes = None
 
@@ -163,7 +206,7 @@ def evaluate_on_montgomery(
     with torch.no_grad():
         for imgs, labels in tqdm(montgomery_loader, desc="  Evaluating on Montgomery", leave=False):
             imgs = imgs.to(device)
-            emb = _get_embedding(encoder, imgs)
+            emb = encoder(imgs)  # Stay on device
             if prototypes is not None:
                 _, probs = proto_head.predict(emb, prototypes)
             else:
@@ -181,12 +224,32 @@ def evaluate_on_montgomery(
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+def _collect_images_and_labels(
+    loader: DataLoader,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Collect all images and labels from a DataLoader into single tensors."""
+    images_list, labels_list = [], []
+    for batch in loader:
+        if isinstance(batch, (list, tuple)) and len(batch) == 2:
+            imgs, labels = batch
+        else:
+            imgs = batch
+            labels = torch.zeros(imgs.shape[0], dtype=torch.long)
+        images_list.append(imgs)
+        labels_list.append(labels if isinstance(labels, torch.Tensor) else torch.tensor(labels))
+
+    if len(images_list) == 0:
+        return torch.zeros(0), torch.zeros(0, dtype=torch.long)
+
+    return torch.cat(images_list), torch.cat(labels_list).long()
+
+
 def _extract_embeddings(
     encoder: nn.Module,
     loader: DataLoader,
     device: torch.device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Run encoder over entire dataloader, return (embeddings, labels) tensors."""
+    """Run encoder over entire dataloader, return (embeddings, labels) tensors on device."""
     embeddings_list, labels_list = [], []
     encoder.eval()
     with torch.no_grad():
@@ -197,19 +260,15 @@ def _extract_embeddings(
                 imgs = batch
                 labels = torch.zeros(imgs.shape[0], dtype=torch.long)
             imgs = imgs.to(device)
-            emb = _get_embedding(encoder, imgs)
-            embeddings_list.append(emb.cpu())
-            labels_list.append(labels if isinstance(labels, torch.Tensor) else torch.tensor(labels))
+            emb = encoder(imgs)
+            # Keep embeddings on the computation device (not CPU)
+            embeddings_list.append(emb)
+            labels_list.append(labels.to(device) if isinstance(labels, torch.Tensor) else torch.tensor(labels, device=device))
 
     if len(embeddings_list) == 0:
-        return torch.zeros(0), torch.zeros(0, dtype=torch.long)
+        return torch.zeros(0, device=device), torch.zeros(0, dtype=torch.long, device=device)
 
     return torch.cat(embeddings_list), torch.cat(labels_list).long()
-
-
-def _get_embedding(encoder: nn.Module, imgs: torch.Tensor) -> torch.Tensor:
-    """Get embedding from encoder, handling both ResNet and ViT paths."""
-    return encoder(imgs)
 
 
 def _sample_kshot(
@@ -225,12 +284,14 @@ def _sample_kshot(
         support_indices : (k * num_classes,) index tensor
         query_indices   : remaining indices
     """
+    # Move labels to CPU for indexing
+    labels_cpu = labels.cpu()
     torch.manual_seed(seed)
     support_idx = []
-    all_idx = torch.arange(len(labels))
+    all_idx = torch.arange(len(labels_cpu))
 
     for c in range(num_classes):
-        class_idx = all_idx[labels == c].tolist()
+        class_idx = all_idx[labels_cpu == c].tolist()
         if len(class_idx) == 0:
             continue
         k_actual = min(k, len(class_idx))
@@ -238,20 +299,22 @@ def _sample_kshot(
         support_idx.extend(chosen)
 
     support_idx = torch.tensor(support_idx)
-    support_mask = torch.zeros(len(labels), dtype=torch.bool)
+    support_mask = torch.zeros(len(labels_cpu), dtype=torch.bool)
     support_mask[support_idx] = True
     query_idx = all_idx[~support_mask]
 
     return support_idx, query_idx
 
 
-def _get_embed_dim(encoder: nn.Module) -> int:
+def _get_embed_dim(encoder: nn.Module, device: Optional[torch.device] = None) -> int:
     """Infer embed_dim from encoder module."""
     if hasattr(encoder, "embed_dim"):
         return encoder.embed_dim
-    # Heuristic: run a dummy forward pass
+    # Heuristic: run a dummy forward pass on the encoder's device
+    if device is None:
+        device = next(encoder.parameters()).device
     encoder.eval()
     with torch.no_grad():
-        dummy = torch.zeros(1, 3, 224, 224)
+        dummy = torch.zeros(1, 3, 224, 224, device=device)
         out = encoder(dummy)
     return out.shape[-1]
