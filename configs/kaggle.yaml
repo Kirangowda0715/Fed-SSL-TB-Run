@@ -5,7 +5,7 @@ data:
 
   montgomery_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-montgomery"
 
-  processed_dir: "/kaggle/working/fedSSL/data/processed"
+  processed_dir: "/kaggle/working/Fed-SSL-TB/data/processed"
 
   image_size: 224
 
@@ -19,7 +19,7 @@ model:
 
   embed_dim: 192
 
-  mask_ratio: 0.80
+  mask_ratio: 0.75
 
   decoder_depth: 4
 
@@ -27,7 +27,7 @@ model:
 ssl:
   epochs_per_round: 2
 
-  batch_size: 8
+  batch_size: 16
 
   lr: 1.0e-3
 
@@ -64,6 +64,6 @@ evaluation:
 
 
 logging:
-  log_dir: "/kaggle/working/fedSSL/experiments/logs"
+  log_dir: "/kaggle/working/Fed-SSL-TB/experiments/logs"
 
-  checkpoint_dir: "/kaggle/working/fedSSL/experiments/checkpoints"
+  checkpoint_dir: "/kaggle/working/Fed-SSL-TB/experiments/checkpoints"

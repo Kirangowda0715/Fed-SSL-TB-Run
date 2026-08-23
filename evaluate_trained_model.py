@@ -18,7 +18,7 @@ def main():
     print(f"Using device: {device}")
 
     # 1. Load the latest encoder checkpoint dynamically
-    ckpt_dir = Path("experiments/checkpoints")
+    ckpt_dir = Path(config.logging.checkpoint_dir)
     ckpts = list(ckpt_dir.glob("encoder_round_*.pt"))
     if not ckpts:
         print(f"Error: No checkpoints found in {ckpt_dir}.")
@@ -61,7 +61,7 @@ def main():
     # because the SSL encoder is already very strong.
     
     from src.models.proto_head import PrototypicalHead
-    embed_dim = encoder.embed_dim if hasattr(encoder, "embed_dim") else 512
+    embed_dim = config.model.embed_dim
     proto_head = PrototypicalHead(embed_dim=embed_dim, num_classes=2).to(device)
     
     # Extract support embeddings

@@ -87,11 +87,11 @@ def finetune_local(
     proto_head.train()
     for epoch in range(num_epochs):
         optimizer.zero_grad()
-        # Use learnable prototypes to ensure gradients flow back to the projection layer
         prototypes = proto_head.get_learnable_prototypes(support_emb, support_lbl)
         loss, probs = proto_head.prototypical_loss(query_emb, query_lbl, prototypes)
-        loss.backward()
-        optimizer.step()
+        if loss.requires_grad:
+            loss.backward()
+            optimizer.step()
 
         if (epoch + 1) % max(1, num_epochs // 3) == 0:
             acc = (probs.argmax(dim=-1) == query_lbl).float().mean().item()

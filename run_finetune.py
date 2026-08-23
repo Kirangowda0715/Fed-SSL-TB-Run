@@ -68,7 +68,7 @@ def main():
 
 
     # 2. Build linear classification head
-    embed_dim   = 192   # ViT-Tiny CLS token dimensionality
+    embed_dim   = config.model.embed_dim
     linear_head = nn.Linear(embed_dim, 2).to(device)
 
     # 3. Load FULL Shenzhen dataset (no validation split - maximize labeled data)

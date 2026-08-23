@@ -42,6 +42,12 @@ def split_nih_to_hospitals(
     """
     np.random.seed(seed)
     n = len(dataset)
+    if num_hospitals < 1:
+        raise ValueError("num_hospitals must be at least 1.")
+    if n < num_hospitals:
+        raise ValueError(
+            f"Cannot create {num_hospitals} non-empty hospital splits from {n} samples."
+        )
     all_indices = np.arange(n)
 
     if strategy == "iid":
@@ -88,15 +94,9 @@ def _split_non_iid(
     # Sample proportions from Dirichlet distribution
     proportions = np.random.dirichlet(alpha=np.ones(num_hospitals) * alpha)
 
-    # Convert proportions to integer counts (ensures they sum to n)
-    counts = (proportions * n).astype(int)
-    # Fix rounding: add remainder to largest hospital
-    counts[-1] = n - counts[:-1].sum()
-    # Ensure no hospital gets 0 samples
-    counts = np.maximum(counts, 1)
-    # Re-adjust if needed
-    diff = n - counts.sum()
-    counts[np.argmax(counts)] += diff
+    # Reserve one sample per hospital, then distribute the remainder.
+    counts = np.ones(num_hospitals, dtype=int)
+    counts += np.random.multinomial(n - num_hospitals, proportions)
 
     # Slice indices
     hospital_indices = []
