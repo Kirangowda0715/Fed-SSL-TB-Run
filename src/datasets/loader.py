@@ -111,10 +111,33 @@ class NIHDataset(Dataset):
 
 # ─── Shenzhen TB Dataset ─────────────────────────────────────────────────────
 
+# ─── Shenzhen TB Dataset ─────────────────────────────────────────────────────
+
 class ShenzhenDataset(Dataset):
     """
     Smart loader for the Shenzhen TB dataset.
-    Supports either folder-based labels or filename suffix labels.
+
+    Supported structures:
+
+        TB_Chest_Radiography_Database/
+        ├── Normal/
+        └── Tuberculosis/
+
+    or:
+
+        root/
+        ├── TB/
+        └── Normal/
+
+    or:
+
+        root/
+        ├── Positive/
+        └── Negative/
+
+    Labels:
+        Normal        -> 0
+        Tuberculosis  -> 1
     """
 
     def __init__(
@@ -130,50 +153,128 @@ class ShenzhenDataset(Dataset):
         self.labels: List[int] = []
 
         def _collect_images(src_dir: Path, label: int) -> None:
-            for ext in ("*.png", "*.jpg", "*.jpeg"):
+            """Collect image files recursively and assign a label."""
+            for ext in ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"):
                 for p in sorted(src_dir.rglob(ext)):
                     self.image_paths.append(p)
                     self.labels.append(label)
 
-        tb_dir = self.root_dir / "TB"
-        normal_dir = self.root_dir / "Normal"
-        pos_dir = self.root_dir / "Positive"
-        neg_dir = self.root_dir / "Negative"
+        # ---------------------------------------------------------------
+        # Check that root exists
+        # ---------------------------------------------------------------
+        if not self.root_dir.exists():
+            print(f"[ERROR] Shenzhen root does not exist: {self.root_dir}")
+            return
 
-        if tb_dir.exists() and normal_dir.exists():
-            _collect_images(tb_dir, 1)
+        print(f"Scanning Shenzhen dataset in {self.root_dir}...")
+
+        # ---------------------------------------------------------------
+        # 1. Actual Shenzhen TB Chest Radiography Database structure
+        #
+        #    Normal/
+        #    Tuberculosis/
+        # ---------------------------------------------------------------
+        tuberculosis_dir = self.root_dir / "Tuberculosis"
+        normal_dir = self.root_dir / "Normal"
+
+        if tuberculosis_dir.exists() and normal_dir.exists():
+
+            print("[Shenzhen] Detected:")
+            print(f"  Normal directory       : {normal_dir}")
+            print(f"  Tuberculosis directory: {tuberculosis_dir}")
+
             _collect_images(normal_dir, 0)
-        elif pos_dir.exists() and neg_dir.exists():
-            _collect_images(pos_dir, 1)
-            _collect_images(neg_dir, 0)
+            _collect_images(tuberculosis_dir, 1)
+
+        # ---------------------------------------------------------------
+        # 2. Alternative TB / Normal structure
+        # ---------------------------------------------------------------
+        elif (self.root_dir / "TB").exists() and normal_dir.exists():
+
+            print("[Shenzhen] Detected TB/Normal directory structure.")
+
+            _collect_images(self.root_dir / "Normal", 0)
+            _collect_images(self.root_dir / "TB", 1)
+
+        # ---------------------------------------------------------------
+        # 3. Alternative Positive / Negative structure
+        # ---------------------------------------------------------------
+        elif (
+            (self.root_dir / "Positive").exists()
+            and (self.root_dir / "Negative").exists()
+        ):
+
+            print("[Shenzhen] Detected Positive/Negative directory structure.")
+
+            _collect_images(self.root_dir / "Negative", 0)
+            _collect_images(self.root_dir / "Positive", 1)
+
+        # ---------------------------------------------------------------
+        # 4. Filename-based fallback
+        # ---------------------------------------------------------------
         else:
+
+            print(
+                "[Shenzhen] No recognized class directories found. "
+                "Trying filename-based labels..."
+            )
+
             all_imgs = []
-            for ext in ("*.png", "*.jpg", "*.jpeg"):
-                all_imgs.extend(list(self.root_dir.rglob(ext)))
-            
+
+            for ext in ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"):
+                all_imgs.extend(self.root_dir.rglob(ext))
+
             for p in sorted(all_imgs):
+
                 name = p.stem
+
                 if name.endswith("_0"):
+                    self.image_paths.append(p)
                     self.labels.append(0)
-                    self.image_paths.append(p)
+
                 elif name.endswith("_1"):
-                    self.labels.append(1)
                     self.image_paths.append(p)
+                    self.labels.append(1)
+
+        # ---------------------------------------------------------------
+        # Print final statistics
+        # ---------------------------------------------------------------
+        normal_count = self.labels.count(0)
+        tb_count = self.labels.count(1)
 
         print(f"Shenzhen Dataset: Found {len(self.image_paths)} images.")
+        print(f"  Normal       : {normal_count}")
+        print(f"  Tuberculosis : {tb_count}")
+
+        if len(self.image_paths) == 0:
+            print(
+                f"[WARNING] No Shenzhen images found in: "
+                f"{self.root_dir}"
+            )
 
     def __len__(self) -> int:
         return len(self.image_paths)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        image = Image.open(self.image_paths[idx]).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-        return image, self.labels[idx]
+
+        image_path = self.image_paths[idx]
+
+        try:
+            image = Image.open(image_path).convert("RGB")
+
+            if self.transform:
+                image = self.transform(image)
+
+            return image, self.labels[idx]
+
+        except Exception as e:
+            print(f"[ERROR] Failed to load image {image_path}: {e}")
+
+            # Return a valid tensor in case of a corrupted image
+            return torch.zeros(3, 224, 224), self.labels[idx]
 
     def get_labels(self) -> List[int]:
         return self.labels
-
 
 # ─── Montgomery TB Dataset ────────────────────────────────────────────────────
 
