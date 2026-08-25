@@ -5,7 +5,7 @@
 
 > **📹 [Watch the 2-Minute Demo Video Here](#)** *(Replace this with your YouTube/Loom link!)*
 
-A production-grade Federated Learning system for detecting Tuberculosis (TB) using Self-Supervised Pre-training (Masked Autoencoders) on large-scale Chest X-ray datasets. Developed as a final year university project, this architecture focuses on **privacy-preserving healthcare AI** optimized for local hospital hardware, achieving an outstanding **94% AUC** in few-shot clinical settings.
+A Federated Learning system for detecting Tuberculosis (TB) using self-supervised Masked Autoencoder pre-training and FLAME-inspired adaptation on sparse Shenzhen labels.
 
 ---
 
@@ -35,7 +35,7 @@ A deep dive into the engineering constraints, hardware optimization (RTX 2050), 
 - **Federated Learning (FedProx)**: Privacy-preserving training across 5 simulated hospitals. Utilizes FedProx to handle the extreme non-IID (unbalanced) data distributions common in real-world clinics.
 - **Vision Transformer (ViT-Tiny)**: Replaced legacy CNNs with a state-of-the-art Transformer backbone. The architecture ensures the federated simulation runs extremely efficiently on consumer-grade GPUs (e.g., RTX 2050 4GB).
 - **Masked Autoencoder (MAE)**: Self-supervised learning from unlabeled X-rays. The model learns fundamental human anatomy by reconstructing masked patches of chest scans.
-- **Few-Shot TB Detection**: Prototypical Networks capable of achieving high accuracy with minimal labeled data (5-shot fine-tuning), hitting **94% AUC**.
+- **Few-Shot TB Detection**: A projection MLP maps encoder features into prototype space; class prototypes are means of exactly `k` Shenzhen Normal and `k` Shenzhen TB support samples.
 - **Live Dashboard**: A fully interactive React/FastAPI dashboard to monitor training and perform real-time TB inference.
 
 ## 📊 Datasets (Massive Scale)
@@ -43,9 +43,9 @@ This project utilizes a subset of three major chest X-ray datasets. Note that du
 
 | Dataset | Purpose | Images Used | Split Strategy |
 | :--- | :--- | :--- | :--- |
-| **NIH ChestX-ray14** | Federated SSL Pre-training (Unlabeled) | **20,000** | Non-IID (Dirichlet α=2.0) |
-| **Shenzhen TB** | 5-Shot Fine-tuning (Labeled) | 662 | IID |
-| **Montgomery TB** | Final Evaluation (Never seen in training) | 138 | N/A |
+| **NIH ChestX-ray14** | Federated SSL representation learning (unlabeled) | Configured limit | Configured split |
+| **Shenzhen TB** | Sparse labeled support and adaptation/query-training data | Dataset-dependent | Deterministic seeded sampling |
+| **Montgomery TB** | Held-out cross-hospital final evaluation | Dataset-dependent | Never used during adaptation |
 
 > [!IMPORTANT]
 > You must download these datasets manually and place them in the `data/raw/` directory structure as defined in the [Documentation](PROJECT_DOCUMENTATION.md).
@@ -71,11 +71,16 @@ Ensure your data is placed in `data/raw/` and then run the data splitter to simu
 python -c "from src.datasets.loader import NIHDataset; from src.datasets.splitter import split_nih_to_hospitals; from src.utils.config import load_config; cfg = load_config(); ds = NIHDataset(cfg.data.nih_path, limit=20000); split_nih_to_hospitals(ds, strategy='non_iid', alpha=2.0)"
 ```
 
-### 3. Federated Training (14 Rounds)
+### 3. Federated Training
 To start the simulation:
 ```bash
 python src/federated/simulation.py --config configs/default.yaml
 ```
+
+The default few-shot setting is 5-shot per class, meaning 5 Normal plus 5 TB
+support images. Remaining Shenzhen images are adaptation/query-training data;
+Montgomery is reserved for final evaluation. The encoder is trainable by
+default and the projection dimension is configured in `finetuning`.
 
 ### 4. Start the Live Dashboard
 In separate terminal windows, start the backend and frontend:

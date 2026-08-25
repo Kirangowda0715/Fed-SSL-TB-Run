@@ -17,20 +17,24 @@ model:
 
 ssl:
   epochs_per_round: 2
-  batch_size: 8
+  batch_size: 6
   lr: 1.0e-3
-  limit_samples: 20000
+  limit_samples: 1000
   optimizer: adamw
 
 federated:
-  rounds: 20
+  rounds: 2
   aggregation: fedprox       # options: fedavg, fedprox
   fedprox_mu: 0.01
 
 finetuning:
-  few_shot_k: 5             # k-shot per class
+  few_shot_k: 5             # 5-shot = 5 samples per class, 10 total for binary TB
+  projection_dim: 128
   epochs: 10
   lr: 1.0e-3
+  freeze_encoder: false
+  seed: 42
+  support_sampling: random_stratified
 
 evaluation:
   test_set: montgomery
@@ -40,6 +44,7 @@ evaluation:
     - sensitivity
     - specificity
     - f1
+    - balanced_accuracy
 
 logging:
   log_dir: experiments/logs/

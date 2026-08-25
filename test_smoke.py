@@ -13,7 +13,7 @@ print("=" * 60)
 
 # 1. Config
 from src.utils.config import load_config
-config = load_config("configs/default.yaml")
+config = load_config("configs/kaggle.yaml")
 print(f"[OK] Config loaded | backbone={config.model.backbone} | embed_dim={config.model.embed_dim}")
 
 # 2. Metrics
@@ -72,7 +72,7 @@ class TinyDataset(torch.utils.data.Dataset):
     def __len__(self): return 8
     def __getitem__(self, i): return torch.randn(3, 224, 224)
 
-cfg2 = load_config("configs/default.yaml")
+cfg2 = load_config("configs/kaggle.yaml")
 cfg2.ssl.epochs_per_round = 1
 cfg2.ssl.batch_size = 4
 

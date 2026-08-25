@@ -11,6 +11,7 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
     confusion_matrix,
+    balanced_accuracy_score,
 )
 
 
@@ -54,6 +55,7 @@ def evaluate(y_true: np.ndarray, y_pred_proba: np.ndarray) -> dict:
         "sensitivity": sensitivity,
         "specificity": specificity,
         "f1": f1,
+        "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
         "confusion_matrix": cm,
     }
 

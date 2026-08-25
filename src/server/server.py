@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from src.models.mae import build_mae, MaskedAutoencoder
+from src.models.proto_head import PrototypicalHead
 from src.server.aggregator import fedavg, fedprox
 
 
@@ -67,6 +68,7 @@ class FederatedServer:
             mask_ratio=self.config.model.mask_ratio,
             decoder_depth=self.config.model.decoder_depth,
             image_size=self.config.data.image_size,
+            projection_dim=getattr(self.config.model, "projection_dim", 128),
         ).to(self.device)
 
         print(
@@ -89,7 +91,7 @@ class FederatedServer:
         assert self.global_model is not None, (
             "Global model not initialized. Call initialize_global_model() first."
         )
-        return {k: v.cpu().clone() for k, v in self.global_model.encoder.state_dict().items()}
+        return self.global_model.get_federated_weights()
 
     def get_global_weights(self) -> Dict[str, Any]:
         """Alias for broadcast — returns global encoder state_dict."""
@@ -141,7 +143,7 @@ class FederatedServer:
             aggregated_weights : Aggregated encoder state_dict from aggregate()
         """
         assert self.global_model is not None
-        self.global_model.load_encoder_weights(aggregated_weights)
+        self.global_model.load_federated_weights(aggregated_weights)
 
     # ─── Checkpointing ───────────────────────────────────────────────────────
 
@@ -164,7 +166,9 @@ class FederatedServer:
 
         checkpoint = {
             "round": round_num,
-            "encoder_state_dict": self.global_model.get_encoder_weights(),
+            "encoder_state_dict": self.global_model.encoder.state_dict(),
+            "decoder_state_dict": self.global_model.decoder.state_dict(),
+            "proto_head_state_dict": self.global_model.proto_head.state_dict(),
             "config": {
                 "backbone": self.config.model.backbone,
                 "embed_dim": self.config.model.embed_dim,
@@ -174,7 +178,7 @@ class FederatedServer:
         if metrics:
             checkpoint["metrics"] = metrics
 
-        ckpt_path = self.checkpoint_dir / f"encoder_round_{round_num:03d}.pt"
+        ckpt_path = self.checkpoint_dir / f"flame_round_{round_num:03d}.pt"
         torch.save(checkpoint, str(ckpt_path))
 
         # Track best model by AUC
@@ -187,7 +191,7 @@ class FederatedServer:
                     self.global_model.get_encoder_weights()
                 )
                 # Save best model separately
-                best_path = self.checkpoint_dir / "best_encoder.pt"
+                best_path = self.checkpoint_dir / "best_flame.pt"
                 torch.save(
                     {**checkpoint, "best_auc": self.best_auc},
                     str(best_path),
@@ -211,7 +215,14 @@ class FederatedServer:
         """
         assert self.global_model is not None
         ckpt = torch.load(path, map_location=self.device)
-        self.global_model.load_encoder_weights(ckpt["encoder_state_dict"])
+        if "decoder_state_dict" in ckpt:
+            self.global_model.load_federated_weights({
+                "encoder": ckpt["encoder_state_dict"],
+                "decoder": ckpt["decoder_state_dict"],
+                "proto_head": ckpt["proto_head_state_dict"],
+            })
+        else:
+            self.global_model.load_encoder_weights(ckpt["encoder_state_dict"])
         round_num = ckpt.get("round", 0)
         print(f"[Server] Loaded checkpoint from round {round_num}: {path}")
         return round_num

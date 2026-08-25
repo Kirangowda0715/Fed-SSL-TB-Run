@@ -10,6 +10,7 @@ Montgomery → binary TB/Normal labels (held-out test set)
 
 import os
 import glob
+import csv
 from pathlib import Path
 from typing import Optional, Callable, Tuple, List
 
@@ -23,6 +24,52 @@ import torchvision.transforms as T
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD  = [0.229, 0.224, 0.225]
+
+
+def _metadata_labels(root_dir: Path, image_paths: List[Path]):
+    """Resolve optional metadata labels by study ID or filename."""
+    candidates = list(root_dir.glob("*_metadata.csv")) + list(root_dir.glob("*metadata*.csv"))
+    if not candidates:
+        return None, [p.stem for p in image_paths]
+    metadata_path = candidates[0]
+    with metadata_path.open(newline="", encoding="utf-8-sig") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows or not rows[0]:
+        raise ValueError(f"Metadata file is empty: {metadata_path}")
+    fields = {field.lower(): field for field in rows[0]}
+    id_field = next((fields[name] for name in ("study_id", "image_id", "filename", "file_name") if name in fields), None)
+    label_field = next((fields[name] for name in ("label", "class", "finding", "findings", "diagnosis") if name in fields), None)
+    if not id_field or not label_field:
+        raise ValueError(f"Metadata must contain an image ID and label column: {metadata_path}")
+    mapping = {}
+    for row in rows:
+        key = Path(row[id_field]).stem
+        value = str(row[label_field]).strip().lower()
+        if value in {"0", "normal", "negative", "no_tb", "no tuberculosis"}:
+            label = 0
+        elif value in {"1", "tb", "tuberculosis", "positive", "yes_tb"}:
+            label = 1
+        else:
+            raise ValueError(f"Ambiguous label {row[label_field]!r} in {metadata_path}")
+        if key in mapping and mapping[key] != label:
+            raise ValueError(f"Conflicting metadata labels for study ID {key}")
+        mapping[key] = label
+    labels = []
+    study_ids = []
+    for path in image_paths:
+        key = path.stem
+        if key not in mapping:
+            raise ValueError(f"No metadata label for image {path.name}")
+        labels.append(mapping[key])
+        study_ids.append(key)
+    return labels, study_ids
+
+
+def _validate_image_ids(image_paths: List[Path], study_ids: List[str]) -> None:
+    if len(set(str(path.resolve()) for path in image_paths)) != len(image_paths):
+        raise ValueError("Duplicate image paths detected.")
+    if len(set(study_ids)) != len(study_ids):
+        raise ValueError("Duplicate study/image IDs detected.")
 
 
 def get_base_transform(image_size: int = 224) -> T.Compose:
@@ -82,9 +129,11 @@ class NIHDataset(Dataset):
         
         # Search recursively for all images
         all_found = []
-        for ext in ("*.png", "*.jpg", "*.jpeg"):
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"):
             all_found.extend(list(self.root_dir.rglob(ext)))
         
+        unique = {str(p.resolve()): p for p in all_found}
+        all_found = list(unique.values())
         all_found.sort()
         if limit and len(all_found) > limit:
             step = len(all_found) // limit
@@ -151,6 +200,7 @@ class ShenzhenDataset(Dataset):
         self.transform = transform or get_base_transform(image_size)
         self.image_paths: List[Path] = []
         self.labels: List[int] = []
+        self.study_ids: List[str] = []
 
         def _collect_images(src_dir: Path, label: int) -> None:
             """Collect image files recursively and assign a label."""
@@ -239,6 +289,18 @@ class ShenzhenDataset(Dataset):
         # ---------------------------------------------------------------
         # Print final statistics
         # ---------------------------------------------------------------
+        unique = {}
+        for path, label in zip(self.image_paths, self.labels):
+            unique[str(path.resolve())] = (path, label)
+        self.image_paths = [item[0] for item in unique.values()]
+        self.labels = [item[1] for item in unique.values()]
+        metadata_labels, metadata_ids = _metadata_labels(self.root_dir, self.image_paths)
+        if metadata_labels is not None:
+            if self.labels and metadata_labels != self.labels:
+                raise ValueError("Metadata labels disagree with Shenzhen folder labels.")
+            self.labels = metadata_labels
+        self.study_ids = metadata_ids
+        _validate_image_ids(self.image_paths, self.study_ids)
         normal_count = self.labels.count(0)
         tb_count = self.labels.count(1)
 
@@ -276,6 +338,9 @@ class ShenzhenDataset(Dataset):
     def get_labels(self) -> List[int]:
         return self.labels
 
+    def get_study_id(self, idx: int) -> str:
+        return self.study_ids[idx]
+
 # ─── Montgomery TB Dataset ────────────────────────────────────────────────────
 
 class MontgomeryDataset(Dataset):
@@ -295,9 +360,10 @@ class MontgomeryDataset(Dataset):
         self.transform = transform or get_base_transform(image_size)
         self.image_paths: List[Path] = []
         self.labels: List[int] = []
+        self.study_ids: List[str] = []
 
         def _collect_images(src_dir: Path, label: int) -> None:
-            for ext in ("*.png", "*.jpg", "*.jpeg"):
+            for ext in ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"):
                 for p in sorted(src_dir.rglob(ext)):
                     self.image_paths.append(p)
                     self.labels.append(label)
@@ -315,7 +381,7 @@ class MontgomeryDataset(Dataset):
             _collect_images(neg_dir, 0)
         else:
             all_imgs = []
-            for ext in ("*.png", "*.jpg", "*.jpeg"):
+            for ext in ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"):
                 all_imgs.extend(list(self.root_dir.rglob(ext)))
             
             for p in sorted(all_imgs):
@@ -327,6 +393,18 @@ class MontgomeryDataset(Dataset):
                     self.labels.append(1)
                     self.image_paths.append(p)
 
+        unique = {}
+        for path, label in zip(self.image_paths, self.labels):
+            unique[str(path.resolve())] = (path, label)
+        self.image_paths = [item[0] for item in unique.values()]
+        self.labels = [item[1] for item in unique.values()]
+        metadata_labels, metadata_ids = _metadata_labels(self.root_dir, self.image_paths)
+        if metadata_labels is not None:
+            if self.labels and metadata_labels != self.labels:
+                raise ValueError("Metadata labels disagree with Montgomery folder labels.")
+            self.labels = metadata_labels
+        self.study_ids = metadata_ids
+        _validate_image_ids(self.image_paths, self.study_ids)
         print(f"Montgomery Dataset: Found {len(self.image_paths)} images.")
 
     def __len__(self) -> int:
@@ -340,3 +418,6 @@ class MontgomeryDataset(Dataset):
 
     def get_labels(self) -> List[int]:
         return self.labels
+
+    def get_study_id(self, idx: int) -> str:
+        return self.study_ids[idx]

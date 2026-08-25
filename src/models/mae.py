@@ -18,6 +18,7 @@ from typing import Tuple, Dict, Any
 
 from src.models.encoder import get_encoder, ResNet50Encoder, ViTSmallEncoder
 from src.models.decoder import MAEDecoder
+from src.models.proto_head import PrototypicalHead
 
 
 class MaskedAutoencoder(nn.Module):
@@ -44,6 +45,8 @@ class MaskedAutoencoder(nn.Module):
         image_size: int = 224,
         patch_size: int = 16,
         in_channels: int = 3,
+        projection_dim: int = 128,
+        proto_head: nn.Module = None,
     ):
         super().__init__()
         assert image_size % patch_size == 0, "image_size must be divisible by patch_size"
@@ -54,6 +57,9 @@ class MaskedAutoencoder(nn.Module):
         self.image_size = image_size
         self.patch_size = patch_size
         self.in_channels = in_channels
+        self.proto_head = proto_head or PrototypicalHead(
+            embed_dim=encoder.embed_dim, projection_dim=projection_dim
+        )
         self.num_patches = (image_size // patch_size) ** 2   # 196 for 224/16
 
         # For ResNet50: we need a patch embedding layer to get per-patch tokens
@@ -237,6 +243,23 @@ class MaskedAutoencoder(nn.Module):
         """
         return {k: v.clone() for k, v in self.encoder.state_dict().items()}
 
+    def get_federated_weights(self) -> Dict[str, Dict[str, Any]]:
+        """Return every trainable component shared by the FLAME server."""
+        return {
+            "encoder": {k: v.detach().cpu().clone() for k, v in self.encoder.state_dict().items()},
+            "decoder": {k: v.detach().cpu().clone() for k, v in self.decoder.state_dict().items()},
+            "proto_head": {k: v.detach().cpu().clone() for k, v in self.proto_head.state_dict().items()},
+        }
+
+    def load_federated_weights(self, state: Dict[str, Dict[str, Any]]) -> None:
+        """Load a complete FLAME state, while accepting old encoder-only states."""
+        if "encoder" not in state:
+            self.load_encoder_weights(state)
+            return
+        self.encoder.load_state_dict(state["encoder"])
+        self.decoder.load_state_dict(state["decoder"])
+        self.proto_head.load_state_dict(state["proto_head"])
+
     def load_encoder_weights(self, state_dict: Dict[str, Any]) -> None:
         """Load encoder weights from a state_dict (from federated server)."""
         self.encoder.load_state_dict(state_dict)
@@ -266,6 +289,7 @@ def build_mae(
     image_size: int = 224,
     patch_size: int = 16,
     in_channels: int = 3,
+    projection_dim: int = 128,
 ) -> MaskedAutoencoder:
     """
     Build a full MaskedAutoencoder model with ViT-Tiny backbone.
@@ -301,5 +325,6 @@ def build_mae(
         image_size=image_size,
         patch_size=patch_size,
         in_channels=in_channels,
+        projection_dim=projection_dim,
     )
 

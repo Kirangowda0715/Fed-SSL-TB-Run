@@ -43,6 +43,15 @@ def fedavg(
     # Compute per-hospital weights
     weights = [n / total_samples for n in sample_counts]
 
+    # Recurse through encoder, decoder, and proto_head component state dicts.
+    if "encoder" in encoder_weights_list[0]:
+        return {
+            component: fedavg(
+                [weights[component] for weights in encoder_weights_list], sample_counts
+            )
+            for component in encoder_weights_list[0]
+        }
+
     # Initialize aggregated state_dict with zeros (same structure as first hospital)
     agg_weights = copy.deepcopy(encoder_weights_list[0])
     for key in agg_weights:
@@ -54,6 +63,8 @@ def fedavg(
         for key in agg_weights:
             if encoder_weights_list[i][key].dtype.is_floating_point:
                 agg_weights[key] += encoder_weights_list[i][key].float() * w
+            else:
+                agg_weights[key] = encoder_weights_list[0][key].clone()
 
     return agg_weights
 

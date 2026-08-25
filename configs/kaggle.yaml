@@ -1,7 +1,7 @@
 data:
   nih_path: "/kaggle/input/datasets/khanfashee/nih-chest-x-ray-14-224x224-resized"
 
-  shenzhen_path: "/kaggle/input/datasets/kiran111up/shenzhen/TB_Chest_Radiography_Database"
+  shenzhen_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-shenzhen"
 
   montgomery_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-montgomery"
 
@@ -22,6 +22,14 @@ model:
   mask_ratio: 0.75
 
   decoder_depth: 4
+  projection_dim: 128
+
+
+flame:
+  alpha: 0.7
+  few_shot_k: 5
+  allow_support_reuse: true
+  support_sampling: per_hospital
 
 
 ssl:
@@ -31,13 +39,13 @@ ssl:
 
   lr: 1.0e-3
 
-  limit_samples: 20000
+  limit_samples: 25000
 
   optimizer: adamw
 
 
 federated:
-  rounds: 20
+  rounds: 30
 
   aggregation: fedprox
 
@@ -45,11 +53,18 @@ federated:
 
 
 finetuning:
-  few_shot_k: 5
+  few_shot_k: 5  # 5 samples per class, 10 support samples total for binary TB
+  projection_dim: 128
 
   epochs: 10
 
   lr: 1.0e-3
+
+  freeze_encoder: false
+
+  seed: 42
+
+  support_sampling: random_stratified
 
 
 evaluation:
@@ -61,6 +76,7 @@ evaluation:
     - sensitivity
     - specificity
     - f1
+    - balanced_accuracy
 
 
 logging:

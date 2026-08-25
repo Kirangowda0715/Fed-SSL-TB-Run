@@ -36,10 +36,10 @@ STAGE 1 (Pre-training):
   5 Hospitals → Each runs MAE on their unlabeled NIH images → Sends weights to server → Server averages → Global Encoder
 
 STAGE 2 (Fine-tuning):
-  Global Encoder (frozen) → Feed labeled Shenzhen X-rays → Compute TB/Normal Prototypes → Train Projection Head
+    Global Encoder → Seeded Shenzhen support/adaptation → Train encoder and projection head with prototypical loss
 
 STAGE 3 (Evaluation):
-  Encoder + Projection Head → Feed Montgomery X-rays (never seen before) → AUC, Sensitivity, Specificity
+    Recompute prototypes from the frozen Shenzhen support set → Evaluate Montgomery once for cross-hospital metrics
 ```
 
 ---
@@ -516,27 +516,20 @@ After pre-training, the encoder knows how to "see" X-rays. Now we need a small e
 
 ```python
 class PrototypicalHead(nn.Module):
-    def __init__(self, embed_dim=512, num_classes=2, use_linear=True):
+    def __init__(self, embed_dim=192, num_classes=2, projection_dim=128):
         super().__init__()
-        self.embed_dim = embed_dim      # 512
+        self.embed_dim = embed_dim
         self.num_classes = num_classes  # 2: (Normal, TB)
-
-        # Optional linear head (for cross-entropy fallback)
-        if use_linear:
-            self.linear_head = nn.Linear(512, 2)
-
-        # OUR INNOVATION: A 2-layer MLP that learns a "TB-Metric Space"
-        # This "Projection" warps the 512-dim space so TB and Normal
-        # X-rays are as far apart as possible.
+        self.projection_dim = projection_dim
         self.projection = nn.Sequential(
-            nn.Linear(512, 512),   # Linear transformation
-            nn.ReLU(),             # Non-linearity (makes it non-trivial)
-            nn.Linear(512, 512),   # Second linear transformation
+            nn.Linear(embed_dim, projection_dim),
+            nn.GELU(),
+            nn.Linear(projection_dim, projection_dim),
         )
 
         # Buffer to store prototypes (not a learnable parameter)
-        # Shape: (2, 512) — one 512-dim prototype per class
-        self.register_buffer("prototypes", torch.zeros(2, 512))
+        # Shape: (2, projection_dim), one mean per class
+        self.register_buffer("prototypes", torch.zeros(2, projection_dim))
         self._prototypes_computed = False
 ```
 
