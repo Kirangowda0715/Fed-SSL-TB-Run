@@ -1,7 +1,7 @@
 data:
   nih_path: "/kaggle/input/datasets/khanfashee/nih-chest-x-ray-14-224x224-resized"
 
-  shenzhen_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-shenzhen"
+  shenzhen_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-shenzhen/images"
 
   montgomery_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-montgomery"
 
