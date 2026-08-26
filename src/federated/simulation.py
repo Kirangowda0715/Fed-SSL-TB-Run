@@ -157,11 +157,13 @@ def main():
     config = load_config()
     seed_everything(int(config.finetuning.seed))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    training_devices = _get_training_devices()
+    device = training_devices[0]
     print(f"\n{'='*70}")
     print(f"  FedSSL -- Federated Self-Supervised Learning for TB Detection")
     print(f"{'='*70}")
-    print(f"  Device        : {device}")
+    print(f"  Server device : {device}")
+    print(f"  Training GPUs : {', '.join(str(item) for item in training_devices)}")
     print(f"  Backbone      : {config.model.backbone}")
     print(f"  Rounds        : {config.federated.rounds}")
     print(f"  Aggregation   : {config.federated.aggregation}")
@@ -249,7 +251,7 @@ def main():
         # 2. Local SSL training at each hospital
         if parallel:
             hospital_results = _train_parallel(
-                global_model, global_weights, hospital_loaders, config, device
+                global_model, global_weights, hospital_loaders, config, training_devices
             )
         else:
             hospital_results = _train_sequential(
@@ -333,6 +335,13 @@ def _evaluate_global_model(model, support_loader, test_loader, device):
     return evaluate(torch.cat(truth).numpy(), torch.cat(probabilities).numpy())
 
 
+def _get_training_devices() -> List[torch.device]:
+    """Return one device per visible GPU, or CPU when CUDA is unavailable."""
+    if not torch.cuda.is_available():
+        return [torch.device("cpu")]
+    return [torch.device(f"cuda:{index}") for index in range(torch.cuda.device_count())]
+
+
 # ─── Hospital Training Helpers ────────────────────────────────────────────────
 
 def _train_sequential(
@@ -365,14 +374,15 @@ def _train_parallel(
     global_weights,
     hospital_loaders,
     config,
-    device,
+    training_devices,
 ) -> List[Dict[str, Any]]:
-    """Train hospitals in parallel using ThreadPoolExecutor."""
+    """Train hospitals in parallel, with no more than one worker per device."""
     results = [None] * len(hospital_loaders)
 
     def _train_one(args):
-        hospital_id, loader, support_loader = args
+        hospital_id, loader, support_loader, hospital_device = args
         hospital_model = copy.deepcopy(global_model)
+        print(f"[Hospital {hospital_id}] Training on {hospital_device}")
         return hospital_id, flame_local_train(
             hospital_id=hospital_id,
             model=hospital_model,
@@ -380,12 +390,16 @@ def _train_parallel(
             support_loader=support_loader,
             config=config,
             global_weights=global_weights,
-            device=device,
+            device=hospital_device,
         )
 
-    with ThreadPoolExecutor(max_workers=min(len(hospital_loaders), 4)) as pool:
+    worker_count = min(len(hospital_loaders), len(training_devices))
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
         futures = {
-            pool.submit(_train_one, (hid, loader, support_loader)): hid
+            pool.submit(
+                _train_one,
+                (hid, loader, support_loader, training_devices[(hid - 1) % len(training_devices)]),
+            ): hid
             for hid, (loader, support_loader) in enumerate(hospital_loaders, start=1)
         }
         for future in as_completed(futures):

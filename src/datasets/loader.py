@@ -47,7 +47,7 @@ def _metadata_labels(root_dir: Path, image_paths: List[Path]):
         value = str(row[label_field]).strip().lower()
         if value in {"0", "normal", "negative", "no_tb", "no tuberculosis"}:
             label = 0
-        elif value in {"1", "tb", "tuberculosis", "positive", "yes_tb"}:
+        elif value in {"1", "tb", "stb", "tuberculosis", "positive", "yes_tb"}:
             label = 1
         else:
             raise ValueError(f"Ambiguous label {row[label_field]!r} in {metadata_path}")

@@ -54,6 +54,21 @@ class FewShotTests(unittest.TestCase):
             self.assertEqual(dataset.get_labels(), [0, 1])
             self.assertEqual(dataset.get_study_id(0), "normal-a")
 
+    def test_metadata_stb_label_is_tuberculosis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Normal").mkdir()
+            (root / "TB").mkdir()
+            Image.new("L", (4, 4)).save(root / "Normal" / "normal-a.png")
+            Image.new("L", (4, 4)).save(root / "TB" / "tb-b.png")
+            with (root / "shenzhen_metadata.csv").open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["study_id", "findings"])
+                writer.writeheader()
+                writer.writerow({"study_id": "normal-a", "findings": "Normal"})
+                writer.writerow({"study_id": "tb-b", "findings": "STB"})
+            dataset = ShenzhenDataset(str(root), transform=get_eval_transform(4), image_size=4)
+            self.assertEqual(dataset.get_labels(), [0, 1])
+
 
 if __name__ == "__main__":
     unittest.main()

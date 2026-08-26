@@ -77,6 +77,13 @@ To start the simulation:
 python src/federated/simulation.py --config configs/default.yaml
 ```
 
+On a Kaggle notebook with two visible GPUs, enable per-hospital parallel training:
+```bash
+!python src/federated/simulation.py --config configs/kaggle.yaml --parallel
+```
+The simulation assigns at most one concurrent hospital worker to each visible GPU
+and prints the device assignment at startup and for each hospital.
+
 The default few-shot setting is 5-shot per class, meaning 5 Normal plus 5 TB
 support images. Remaining Shenzhen images are adaptation/query-training data;
 Montgomery is reserved for final evaluation. The encoder is trainable by
