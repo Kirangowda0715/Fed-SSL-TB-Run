@@ -101,6 +101,27 @@ npm run dev
 ```
 Navigate to `http://localhost:3000` to interact with the federated metrics.
 
+### Frontend API contract
+
+The frontend reads `VITE_API_URL` (default `http://localhost:8000`) through one
+API service. The FastAPI service exposes:
+
+- `GET /metrics` — the persisted round log, including `mean_mae_loss`,
+  `mean_proto_loss`, `mean_total_loss`, hospital losses, sample counts, and any
+  recorded `eval_metrics`.
+- `GET /status` — observable state derived from the log and active config,
+  including completed/total rounds, configured hospitals, aggregation strategy,
+  and checkpoint availability. An incomplete log is reported as `IDLE`; it is
+  not presented as live `RUNNING` without a process signal.
+- `GET /metadata` — model, few-shot, and filesystem-derived dataset metadata.
+- `POST /predict` — multipart field `file`; returns `prediction`,
+  `confidence`, `tb_probability`, and `normal_probability` when inference is
+  available.
+
+Shenzhen is the few-shot adaptation/support dataset and Montgomery is the
+held-out final evaluation dataset. “5-shot per class” means five Normal plus
+five TB support images.
+
 ## 📖 Learn More
 For a deep dive into the architecture, federated strategies, and physics of the model, see:
 👉 **[PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**
