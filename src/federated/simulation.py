@@ -303,6 +303,8 @@ def main():
         )
         print("\nMontgomery Test")
         print(format_metrics(eval_metrics))
+        if len(logger.rounds) > 0:
+            logger.rounds[-1]["eval_metrics"] = eval_metrics
     except Exception as e:
         print(f"[WARNING] Final Montgomery evaluation failed: {e}")
 
