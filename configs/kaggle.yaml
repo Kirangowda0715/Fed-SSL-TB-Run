@@ -60,7 +60,7 @@ finetuning:
 
   lr: 1.0e-3
 
-  freeze_encoder: false
+  freeze_encoder: true
 
   seed: 42
 

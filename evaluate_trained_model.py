@@ -20,7 +20,10 @@ def main():
     seed_everything(int(config.finetuning.seed))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_dir = Path(config.logging.checkpoint_dir)
-    checkpoints = sorted(checkpoint_dir.glob("encoder_round_*.pt"))
+    checkpoints = sorted(
+        list(checkpoint_dir.glob("encoder_round_*.pt")) +
+        list(checkpoint_dir.glob("flame_round_*.pt"))
+    )
     checkpoint = checkpoint_dir / "best_encoder.pt"
     if not checkpoint.exists():
         if not checkpoints:
@@ -29,6 +32,7 @@ def main():
     encoder = get_encoder(config.model.backbone, config.model.embed_dim)
     state = torch.load(checkpoint, map_location=device, weights_only=False)
     encoder.load_state_dict(state.get("encoder_state_dict", state))
+    encoder.to(device)
     transform = get_eval_transform(config.data.image_size)
     shenzhen = ShenzhenDataset(config.data.shenzhen_path, transform=transform, image_size=config.data.image_size)
     montgomery = MontgomeryDataset(config.data.montgomery_path, transform=transform, image_size=config.data.image_size)
