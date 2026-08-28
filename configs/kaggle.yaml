@@ -19,7 +19,7 @@ model:
 
   embed_dim: 192
 
-  mask_ratio: 0.80
+  mask_ratio: 0.75
 
   decoder_depth: 4
   projection_dim: 128
@@ -39,13 +39,13 @@ ssl:
 
   lr: 1.0e-3
 
-  limit_samples: 15000
+  limit_samples: 25000
 
   optimizer: adamw
 
 
 federated:
-  rounds: 50
+  rounds: 30
 
   aggregation: fedprox
 
@@ -56,11 +56,11 @@ finetuning:
   few_shot_k: 5  # 5 samples per class, 10 support samples total for binary TB
   projection_dim: 128
 
-  epochs: 15
+  epochs: 10
 
   lr: 1.0e-3
 
-  freeze_encoder: true
+  freeze_encoder: false
 
   seed: 42
 
