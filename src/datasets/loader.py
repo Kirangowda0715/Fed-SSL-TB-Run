@@ -44,13 +44,18 @@ def _metadata_labels(root_dir: Path, image_paths: List[Path]):
     mapping = {}
     for row in rows:
         key = Path(row[id_field]).stem
-        value = str(row[label_field]).strip().lower()
-        if value in {"0", "normal", "negative", "no_tb", "no tuberculosis"}:
+        if key.endswith("_0"):
             label = 0
-        elif value in {"1", "tb", "stb", "tuberculosis", "positive", "yes_tb"}:
+        elif key.endswith("_1"):
             label = 1
         else:
-            raise ValueError(f"Ambiguous label {row[label_field]!r} in {metadata_path}")
+            value_lower = str(row[label_field]).strip().lower()
+            if value_lower == "normal" or value_lower in {"0", "negative", "no_tb", "no tuberculosis"}:
+                label = 0
+            elif "ptb" in value_lower or "stb" in value_lower or "tb" in value_lower or "tuberculosis" in value_lower or value_lower == "1":
+                label = 1
+            else:
+                raise ValueError(f"Ambiguous label {row[label_field]!r} in {metadata_path}")
         if key in mapping and mapping[key] != label:
             raise ValueError(f"Conflicting metadata labels for study ID {key}")
         mapping[key] = label
