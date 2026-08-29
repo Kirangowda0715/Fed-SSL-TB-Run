@@ -135,9 +135,15 @@ def finetune_local(
             encoder.eval()
         head.train()
         for query_images, query_labels in query_loader:
-            support_embeddings = encoder(support_images)
+            if freeze_encoder:
+                with torch.no_grad():
+                    support_embeddings = encoder(support_images)
+                    query_embeddings = encoder(query_images.to(device))
+            else:
+                support_embeddings = encoder(support_images)
+                query_embeddings = encoder(query_images.to(device))
+
             prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
-            query_embeddings = encoder(query_images.to(device))
             loss, _ = head.prototypical_loss(query_embeddings, query_labels.to(device), prototypes)
             optimizer.zero_grad()
             loss.backward()
