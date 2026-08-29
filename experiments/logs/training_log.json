@@ -2097,6 +2097,14 @@
       8700,
       1129,
       1568
-    ]
+    ],
+    "eval_metrics": {
+      "auc": 0.5597,
+      "accuracy": 0.5217,
+      "sensitivity": 0.7586,
+      "specificity": 0.3500,
+      "f1": 0.5714,
+      "balanced_accuracy": 0.5543
+    }
   }
 ]
