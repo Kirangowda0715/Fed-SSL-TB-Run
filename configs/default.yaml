@@ -30,9 +30,9 @@ federated:
 finetuning:
   few_shot_k: 5             # 5-shot = 5 samples per class, 10 total for binary TB
   projection_dim: 128
-  epochs: 10
+  epochs: 30
   lr: 1.0e-3
-  freeze_encoder: false
+  freeze_encoder: true
   seed: 42
   support_sampling: random_stratified
 

@@ -129,7 +129,10 @@ def finetune_local(
     head.support_labels = support_labels.detach().cpu()
 
     for epoch in range(int(config.finetuning.epochs)):
-        encoder.train()
+        if not freeze_encoder:
+            encoder.train()
+        else:
+            encoder.eval()
         head.train()
         for query_images, query_labels in query_loader:
             support_embeddings = encoder(support_images)
