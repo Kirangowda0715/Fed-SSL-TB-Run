@@ -87,8 +87,10 @@ class PrototypicalHead(nn.Module):
     def _prototypical_logits(
         queries: torch.Tensor, prototypes: torch.Tensor
     ) -> torch.Tensor:
-        distances = (queries.unsqueeze(1) - prototypes.unsqueeze(0)).pow(2).sum(dim=-1)
-        return F.softmax(-distances, dim=-1)
+        """Compute cosine similarity scaled by temperature 10.0."""
+        queries_norm = F.normalize(queries, p=2, dim=-1)
+        prototypes_norm = F.normalize(prototypes, p=2, dim=-1)
+        return torch.mm(queries_norm, prototypes_norm.t()) * 10.0
 
     def prototypical_loss(
         self,
@@ -96,17 +98,20 @@ class PrototypicalHead(nn.Module):
         query_labels: torch.Tensor,
         prototypes: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        probs = self.forward(query_embeddings, prototypes)
-        labels = query_labels.to(probs.device).long()
-        return F.nll_loss(torch.log(probs.clamp_min(1e-8)), labels), probs
+        logits = self.forward(query_embeddings, prototypes)
+        labels = query_labels.to(logits.device).long()
+        loss = F.cross_entropy(logits, labels)
+        probs = F.softmax(logits, dim=-1)
+        return loss, probs
 
     def predict(
         self,
         query_embeddings: torch.Tensor,
         prototypes: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        probs = self.forward(query_embeddings, prototypes)
-        return probs.argmax(dim=-1), probs
+        logits = self.forward(query_embeddings, prototypes)
+        probs = F.softmax(logits, dim=-1)
+        return logits.argmax(dim=-1), probs
 
     def linear_forward(self, embeddings: torch.Tensor) -> torch.Tensor:
         if not self.use_linear:

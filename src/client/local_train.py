@@ -128,27 +128,49 @@ def finetune_local(
     head.support_dataset = dataset
     head.support_labels = support_labels.detach().cpu()
 
-    for epoch in range(int(config.finetuning.epochs)):
-        if not freeze_encoder:
+    if freeze_encoder:
+        encoder.eval()
+        with torch.no_grad():
+            support_embeddings = encoder(support_images).detach()
+        
+        # Pre-extract all query embeddings
+        extract_loader = _loader(dataset, query_idx, batch_size, shenzhen_loader, shuffle=False)
+        query_embeddings_list = []
+        query_labels_list = []
+        with torch.no_grad():
+            for imgs, lbls in extract_loader:
+                emb = encoder(imgs.to(device)).detach()
+                query_embeddings_list.append(emb)
+                query_labels_list.append(lbls)
+        all_query_embeddings = torch.cat(query_embeddings_list, dim=0)
+        all_query_labels = torch.cat(query_labels_list, dim=0)
+        
+        from torch.utils.data import TensorDataset
+        query_emb_dataset = TensorDataset(all_query_embeddings, all_query_labels)
+        query_emb_loader = DataLoader(query_emb_dataset, batch_size=batch_size, shuffle=True)
+        
+        for epoch in range(int(config.finetuning.epochs)):
+            head.train()
+            for q_emb, q_lbl in query_emb_loader:
+                prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
+                loss, _ = head.prototypical_loss(q_emb.to(device), q_lbl.to(device), prototypes)
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(train_parameters, 1.0)
+                optimizer.step()
+    else:
+        for epoch in range(int(config.finetuning.epochs)):
             encoder.train()
-        else:
-            encoder.eval()
-        head.train()
-        for query_images, query_labels in query_loader:
-            if freeze_encoder:
-                with torch.no_grad():
-                    support_embeddings = encoder(support_images)
-                    query_embeddings = encoder(query_images.to(device))
-            else:
+            head.train()
+            for query_images, query_labels in query_loader:
                 support_embeddings = encoder(support_images)
                 query_embeddings = encoder(query_images.to(device))
-
-            prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
-            loss, _ = head.prototypical_loss(query_embeddings, query_labels.to(device), prototypes)
-            optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(train_parameters, 1.0)
-            optimizer.step()
+                prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
+                loss, _ = head.prototypical_loss(query_embeddings, query_labels.to(device), prototypes)
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(train_parameters, 1.0)
+                optimizer.step()
 
     encoder.eval()
     head.eval()
