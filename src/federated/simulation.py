@@ -8,15 +8,14 @@ Usage:
     python src/federated/simulation.py --config configs/default.yaml --federated.rounds=30
     python src/federated/simulation.py --config configs/default.yaml --dry-run
 
-Full federated loop:
+Full federated loop (Stage 1 Pure SSL):
   For each round:
     1. Server broadcasts global encoder to all hospitals
-    2. Each hospital runs ssl_local_train() (sequential or parallel)
+    2. Each hospital runs ssl_local_train() (sequential or parallel) on local NIH
     3. Collect encoder weights + sample counts
-    4. Server aggregates → updates global model
+    4. Server aggregates (FedAvg/FedProx) → updates global model
     5. Save checkpoint
-    6. Every 5 rounds: fine-tune on Shenzhen → evaluate on Montgomery
-    7. Log per-round summary table
+    6. Log per-round SSL loss summary table
 """
 
 import os
