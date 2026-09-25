@@ -88,6 +88,35 @@ class Stage1ArchitectureTests(unittest.TestCase):
         for l in loaders:
             self.assertIsInstance(l, DataLoader)
 
+    def test_active_simulation_uses_ssl_train_not_flame(self):
+        """Verify simulation.py uses ssl_local_train and does not import or invoke flame_local_train."""
+        import src.federated.simulation as sim
+        from unittest.mock import patch
+        
+        # Verify module imports
+        self.assertTrue(hasattr(sim, "ssl_local_train"))
+        self.assertFalse(hasattr(sim, "flame_local_train"))
+        
+        # Verify _train_sequential calls ssl_local_train
+        with patch("src.federated.simulation.ssl_local_train") as mock_ssl_train:
+            mock_ssl_train.return_value = {
+                "encoder_weights": {},
+                "num_samples": 10,
+                "epoch_losses": [1.0],
+                "ssl_loss": 1.0,
+            }
+            dummy_model = build_mae(self.config)
+            dummy_loader = DataLoader(TensorDataset(torch.randn(2, 3, 224, 224)))
+            results = sim._train_sequential(
+                global_model=dummy_model,
+                global_weights={},
+                hospital_loaders=[dummy_loader],
+                config=self.config,
+                device=torch.device("cpu"),
+            )
+            self.assertEqual(len(results), 1)
+            self.assertEqual(mock_ssl_train.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
