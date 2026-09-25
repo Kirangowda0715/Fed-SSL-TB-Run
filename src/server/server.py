@@ -91,7 +91,7 @@ class FederatedServer:
         assert self.global_model is not None, (
             "Global model not initialized. Call initialize_global_model() first."
         )
-        return self.global_model.get_federated_weights()
+        return self.global_model.get_encoder_weights()
 
     def get_global_weights(self) -> Dict[str, Any]:
         """Alias for broadcast — returns global encoder state_dict."""
@@ -143,7 +143,10 @@ class FederatedServer:
             aggregated_weights : Aggregated encoder state_dict from aggregate()
         """
         assert self.global_model is not None
-        self.global_model.load_federated_weights(aggregated_weights)
+        if "encoder" in aggregated_weights:
+            self.global_model.load_federated_weights(aggregated_weights)
+        else:
+            self.global_model.load_encoder_weights(aggregated_weights)
 
     # ─── Checkpointing ───────────────────────────────────────────────────────
 
@@ -241,8 +244,10 @@ class FederatedServer:
 
     def summary(self) -> str:
         """Return a summary string of server state."""
-        return (
-            f"FederatedServer | "
-            f"Aggregation: {self.aggregation} | "
-            f"Best AUC: {self.best_auc:.4f} @ Round {self.best_round}"
-        )
+        if self.best_round >= 0:
+            return (
+                f"FederatedServer | "
+                f"Aggregation: {self.aggregation} | "
+                f"Best AUC: {self.best_auc:.4f} @ Round {self.best_round}"
+            )
+        return f"FederatedServer | Aggregation: {self.aggregation}"

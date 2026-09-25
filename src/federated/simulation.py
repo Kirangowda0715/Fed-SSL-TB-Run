@@ -43,12 +43,12 @@ from src.utils.config import load_config
 from src.utils.reproducibility import seed_everything
 from src.utils.metrics import evaluate, format_metrics
 from src.datasets.loader import (
-    NIHDataset, ShenzhenDataset, MontgomeryDataset,
+    NIHDataset,
     get_base_transform, get_eval_transform,
 )
 from src.datasets.splitter import split_nih_to_hospitals, load_hospital_indices
 from src.models.mae import build_mae
-from src.client.flame_local_train import flame_local_train
+from src.client.ssl_train import ssl_local_train
 from src.server.server import FederatedServer
 
 
@@ -99,9 +99,9 @@ class RoundLogger:
     def log(self, round_num: int, data: Dict[str, Any]) -> None:
         entry = {"round": round_num, **data}
         self.rounds.append(entry)
-        total_loss = data.get("mean_total_loss", float("nan"))
+        mean_ssl_loss = data.get("mean_ssl_loss", data.get("mean_total_loss", float("nan")))
         print(f"\n{'-'*70}")
-        print(f"  Round {round_num+1:3d} | MAE: {data.get('mean_mae_loss', float('nan')):.4f} | Proto: {data.get('mean_proto_loss', float('nan')):.4f} | Total: {total_loss:.4f}", end="")
+        print(f"  Round {round_num+1:3d} | SSL Loss: {mean_ssl_loss:.4f}", end="")
         if "eval_metrics" in data:
             m = data["eval_metrics"]
             print(f" | {format_metrics(m)}", end="")
@@ -181,10 +181,8 @@ def main():
         hospital_loaders = _build_synthetic_hospital_loaders(
             num_hospitals, batch_size, image_size
         )
-        shenzhen_loader   = DataLoader(SyntheticLabeledDataset(20, image_size), batch_size=8)
-        montgomery_loader = DataLoader(SyntheticLabeledDataset(20, image_size), batch_size=8)
     else:
-        hospital_loaders, montgomery_loader = _build_real_loaders(
+        hospital_loaders = _build_real_loaders(
             config, num_hospitals, batch_size, image_size
         )
 
@@ -199,7 +197,7 @@ def main():
     if resume:
         print(f"\n[Resume] Attempting to restore from checkpoint & history...")
         ckpt_dir = Path(config.logging.checkpoint_dir)
-        ckpts = list(ckpt_dir.glob("flame_round_*.pt"))
+        ckpts = list(ckpt_dir.glob("flame_round_*.pt")) + list(ckpt_dir.glob("encoder_round_*.pt"))
         
         # Always try to load logger history when resuming (checkpoint may or may not exist)
         logger = RoundLogger(config.logging.log_dir)
@@ -245,7 +243,7 @@ def main():
         print(f"  ROUND {round_num + 1} / {config.federated.rounds}")
         print(f"{'='*70}")
 
-        # 1. Broadcast the complete global FLAME model.
+        # 1. Broadcast global encoder weights to hospitals.
         global_weights = server.broadcast()
 
         # 2. Local SSL training at each hospital
@@ -259,55 +257,34 @@ def main():
             )
 
         # 3. Collect weights and sample counts
-        model_weights_list = [r["model_weights"] for r in hospital_results]
+        encoder_weights_list = [r["encoder_weights"] for r in hospital_results]
         sample_counts        = [r["num_samples"] for r in hospital_results]
-        mae_losses = [r["mae_loss"] for r in hospital_results]
-        proto_losses = [r["proto_loss"] for r in hospital_results]
-        total_losses = [r["total_loss"] for r in hospital_results]
+        ssl_losses           = [r["epoch_losses"][-1] for r in hospital_results]
+        mean_ssl_loss        = float(np.mean(ssl_losses))
 
-        print(f"\n  [Round {round_num+1}] Mean MAE Loss: {np.mean(mae_losses):.4f} | Mean Proto Loss: {np.mean(proto_losses):.4f} | Mean Total Loss: {np.mean(total_losses):.4f}")
+        print(f"\n  [Round {round_num+1}] Mean SSL Loss: {mean_ssl_loss:.4f}")
 
-        # 4. Aggregate
-        aggregated_weights = server.aggregate(model_weights_list, sample_counts)
+        # 4. Aggregate encoder weights
+        aggregated_weights = server.aggregate(encoder_weights_list, sample_counts)
 
-        # 5. Update global model
+        # 5. Update global model encoder
         server.update_global_model(aggregated_weights)
 
-        # 6. Montgomery remains held out; evaluation uses the global model only.
-        eval_metrics = None
-
-        # 7. Save checkpoint
-        ckpt_path = server.save_checkpoint(round_num, metrics=eval_metrics)
+        # 6. Save checkpoint
+        ckpt_path = server.save_checkpoint(round_num)
         print(f"  [Round {round_num+1}] Checkpoint saved -> {ckpt_path}")
 
-        # 8. Log round
+        # 7. Log round
         log_entry = {
-            "mean_mae_loss": float(np.mean(mae_losses)),
-            "mean_proto_loss": float(np.mean(proto_losses)),
-            "mean_total_loss": float(np.mean(total_losses)),
-            "hospital_losses": [{"mae": a, "proto": p, "total": t} for a, p, t in zip(mae_losses, proto_losses, total_losses)],
+            "mean_ssl_loss": mean_ssl_loss,
+            "hospital_losses": [{"ssl": l} for l in ssl_losses],
             "sample_counts": sample_counts,
         }
-        if eval_metrics:
-            log_entry["eval_metrics"] = eval_metrics
-
         logger.log(round_num, log_entry)
 
     # ── Final Summary ─────────────────────────────────────────────────────
     print(f"\n{'='*70}")
-    print("  FINAL EVALUATION")
-    print(f"{'='*70}")
-    try:
-        eval_metrics = _evaluate_global_model(
-            server.get_global_model(), hospital_loaders[0][1], montgomery_loader, device
-        )
-        print("\nMontgomery Test")
-        print(format_metrics(eval_metrics))
-    except Exception as e:
-        print(f"[WARNING] Final Montgomery evaluation failed: {e}")
-
-    print(f"\n{'='*70}")
-    print(f"  TRAINING COMPLETE")
+    print("  STAGE 1 PRETRAINING COMPLETE")
     print(f"  {server.summary()}")
     print(f"{'='*70}\n")
 
@@ -315,24 +292,6 @@ def main():
     print("[Simulation] Done.")
 
 
-def _evaluate_global_model(model, support_loader, test_loader, device):
-    """Evaluate the global FLAME model using local Shenzhen support only."""
-    model.eval()
-    support_images, support_labels = next(iter(support_loader))
-    with torch.no_grad():
-        support_features = model.encoder(support_images.to(device))
-        prototypes = model.proto_head.compute_prototypes(
-            support_features, torch.as_tensor(support_labels, device=device)
-        )
-        probabilities, truth = [], []
-        for images, labels in test_loader:
-            features = model.encoder(images.to(device))
-            _, probs = model.proto_head.predict(features, prototypes)
-            probabilities.append(probs[:, 1].cpu())
-            truth.append(torch.as_tensor(labels).long())
-    if not truth:
-        raise ValueError("Montgomery test set is empty.")
-    return evaluate(torch.cat(truth).numpy(), torch.cat(probabilities).numpy())
 
 
 def _get_training_devices() -> List[torch.device]:
@@ -353,14 +312,13 @@ def _train_sequential(
 ) -> List[Dict[str, Any]]:
     """Train hospitals one-by-one (default mode)."""
     results = []
-    for hospital_id, (loader, support_loader) in enumerate(hospital_loaders, start=1):
+    for hospital_id, loader in enumerate(hospital_loaders, start=1):
         # Give each hospital a fresh copy of the global model
         hospital_model = copy.deepcopy(global_model)
-        result = flame_local_train(
+        result = ssl_local_train(
             hospital_id=hospital_id,
             model=hospital_model,
-            unlabeled_loader=loader,
-            support_loader=support_loader,
+            dataloader=loader,
             config=config,
             global_weights=global_weights,
             device=device,
@@ -380,14 +338,13 @@ def _train_parallel(
     results = [None] * len(hospital_loaders)
 
     def _train_one(args):
-        hospital_id, loader, support_loader, hospital_device = args
+        hospital_id, loader, hospital_device = args
         hospital_model = copy.deepcopy(global_model)
         print(f"[Hospital {hospital_id}] Training on {hospital_device}")
-        return hospital_id, flame_local_train(
+        return hospital_id, ssl_local_train(
             hospital_id=hospital_id,
             model=hospital_model,
-            unlabeled_loader=loader,
-            support_loader=support_loader,
+            dataloader=loader,
             config=config,
             global_weights=global_weights,
             device=hospital_device,
@@ -398,9 +355,9 @@ def _train_parallel(
         futures = {
             pool.submit(
                 _train_one,
-                (hid, loader, support_loader, training_devices[(hid - 1) % len(training_devices)]),
+                (hid, loader, training_devices[(hid - 1) % len(training_devices)]),
             ): hid
-            for hid, (loader, support_loader) in enumerate(hospital_loaders, start=1)
+            for hid, loader in enumerate(hospital_loaders, start=1)
         }
         for future in as_completed(futures):
             hospital_id, result = future.result()
@@ -413,14 +370,13 @@ def _train_parallel(
 
 def _build_synthetic_hospital_loaders(num_hospitals, batch_size, image_size):
     return [
-        (DataLoader(SyntheticNIHDataset(size=64, image_size=image_size), batch_size=batch_size, shuffle=True),
-         DataLoader(SyntheticLabeledDataset(size=10, image_size=image_size), batch_size=10, shuffle=False))
+        DataLoader(SyntheticNIHDataset(size=64, image_size=image_size), batch_size=batch_size, shuffle=True)
         for _ in range(num_hospitals)
     ]
 
 
 def _build_real_loaders(config, num_hospitals, batch_size, image_size):
-    """Build real dataset loaders for NIH (split), Shenzhen, and Montgomery."""
+    """Build real dataset loaders for NIH (split across hospitals)."""
     # Read limit from config, fallback to 5000 if not set
     limit_val = getattr(config.ssl, "limit_samples", 5000)
 
@@ -479,56 +435,17 @@ def _build_real_loaders(config, num_hospitals, batch_size, image_size):
 
     pin_memory = torch.cuda.is_available()
     hospital_loaders = [
-        (DataLoader(
+        DataLoader(
             Subset(nih_dataset, indices),
             batch_size=batch_size,
             shuffle=True,
             num_workers=2 if os.name != "nt" else 0, # num_workers > 0 can be unstable on Windows in some envs
             pin_memory=pin_memory,
-        ), None)
+        )
         for indices in hospital_indices_list
     ]
 
-    shenzhen_dataset = ShenzhenDataset(
-        root_dir=config.data.shenzhen_path,
-        image_size=image_size,
-    )
-    if len(shenzhen_dataset) == 0:
-        print(f"\n[ERROR] Shenzhen dataset at {config.data.shenzhen_path} is empty.")
-        sys.exit(1)
-
-    flame_config = getattr(config, "flame", config.finetuning)
-    support_k = int(getattr(flame_config, "few_shot_k", config.finetuning.few_shot_k))
-    labels = np.asarray(shenzhen_dataset.get_labels())
-    rng = np.random.default_rng(int(config.finetuning.seed))
-    for hospital_id in range(num_hospitals):
-        selected = []
-        for class_id in (0, 1):
-            candidates = np.flatnonzero(labels == class_id)
-            if len(candidates) < support_k:
-                raise ValueError(f"Shenzhen class {class_id} has fewer than {support_k} samples.")
-            selected.extend(rng.choice(candidates, support_k, replace=False).tolist())
-        support_loader = DataLoader(
-            Subset(shenzhen_dataset, selected), batch_size=len(selected), shuffle=False,
-            num_workers=0, pin_memory=pin_memory,
-        )
-        hospital_loaders[hospital_id] = (hospital_loaders[hospital_id][0], support_loader)
-        print(f"[Support] Hospital {hospital_id + 1}: Normal={support_k}, TB={support_k} (per-hospital sampling; reuse allowed)")
-
-    montgomery_dataset = MontgomeryDataset(
-        root_dir=config.data.montgomery_path,
-        image_size=image_size,
-    )
-    if len(montgomery_dataset) == 0:
-        print(f"\n[ERROR] Montgomery dataset at {config.data.montgomery_path} is empty.")
-        sys.exit(1)
-
-    montgomery_loader = DataLoader(
-        montgomery_dataset, batch_size=batch_size,
-        shuffle=False, num_workers=2 if os.name != "nt" else 0,
-    )
-
-    return hospital_loaders, montgomery_loader
+    return hospital_loaders
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────

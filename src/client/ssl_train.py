@@ -55,8 +55,9 @@ def ssl_local_train(
     model.train()
 
     # ── Optimizer & scheduler ───────────────────────────────────────────
+    train_parameters = list(model.encoder.parameters()) + list(model.decoder.parameters())
     optimizer = AdamW(
-        model.parameters(),
+        train_parameters,
         lr=config.ssl.lr,
         weight_decay=0.05,
         betas=(0.9, 0.95),
@@ -84,9 +85,8 @@ def ssl_local_train(
         )
 
         for batch in pbar:
-            # NIHDataset with two_view=True returns (view1, view2)
-            if isinstance(batch, (list, tuple)) and len(batch) == 2:
-                # Unpack — use view1 for MAE (the model handles this internally too)
+            # NIHDataset returns a tensor or (view1, view2); generic loaders may return a tuple
+            if isinstance(batch, (list, tuple)):
                 imgs = batch[0].to(device)
             else:
                 imgs = batch.to(device)
@@ -99,17 +99,18 @@ def ssl_local_train(
             # FedProx proximal term: μ/2 * ||w_local - w_global||²
             # Computed over live encoder parameters to preserve the autograd computational graph
             if is_fedprox and global_weights is not None:
+                enc_weights = global_weights.get("encoder", global_weights) if isinstance(global_weights, dict) else global_weights
                 proximal_term = 0.0
                 for name, param in model.encoder.named_parameters():
-                    if name in global_weights:
-                        g_param = global_weights[name].to(device)
+                    if name in enc_weights:
+                        g_param = enc_weights[name].to(device)
                         proximal_term = proximal_term + torch.sum((param - g_param) ** 2)
                 loss = loss + (mu / 2.0) * proximal_term
 
             loss.backward()
 
             # Gradient clipping for stability
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            nn.utils.clip_grad_norm_(train_parameters, max_norm=1.0)
 
             optimizer.step()
 
@@ -136,5 +137,6 @@ def ssl_local_train(
         "encoder_weights": encoder_weights,
         "num_samples": num_samples,
         "epoch_losses": epoch_losses,
+        "ssl_loss": epoch_losses[-1] if epoch_losses else float("nan"),
     }
 
