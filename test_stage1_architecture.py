@@ -36,6 +36,10 @@ class Stage1ArchitectureTests(unittest.TestCase):
         # Check return dict
         self.assertIn("ssl_loss", result)
         self.assertIn("encoder_weights", result)
+        self.assertIn("federated_weights", result)
+        self.assertIn("encoder", result["federated_weights"])
+        self.assertIn("decoder", result["federated_weights"])
+        self.assertNotIn("proto_head", result["federated_weights"])
         self.assertNotIn("proto_loss", result)
         self.assertNotIn("mae_loss", result)
         
@@ -54,31 +58,31 @@ class Stage1ArchitectureTests(unittest.TestCase):
         for g in proto_grads:
             self.assertIsNone(g, "Proto head parameter should not receive any gradients during Stage 1.")
 
-    def test_server_encoder_only_aggregation(self):
-        """Verify FederatedServer broadcasts and updates only encoder weights for Stage 1."""
+    def test_server_broadcasts_encoder_and_decoder(self):
+        """Verify Stage 1 broadcasts and aggregates encoder + decoder, excluding proto head."""
         server = FederatedServer(self.config)
         server.initialize_global_model()
         
         # Broadcast should return encoder weights dict
         broadcast_weights = server.broadcast()
         self.assertIsInstance(broadcast_weights, dict)
-        self.assertTrue(all(k.startswith("vit.") or k.startswith("proj.") or not k.startswith("decoder.") for k in broadcast_weights.keys()))
-        self.assertFalse(any("decoder" in k for k in broadcast_weights.keys()))
-        self.assertFalse(any("proto_head" in k for k in broadcast_weights.keys()))
+        self.assertIn("encoder", broadcast_weights)
+        self.assertIn("decoder", broadcast_weights)
+        self.assertNotIn("proto_head", broadcast_weights)
         
         # Aggregation of encoder weights across 2 clients
-        w1 = {k: v.clone() for k, v in broadcast_weights.items()}
-        w2 = {k: v.clone() + 1.0 for k, v in broadcast_weights.items()}
+        w1 = {component: {k: v.clone() for k, v in weights.items()} for component, weights in broadcast_weights.items()}
+        w2 = {component: {k: v.clone() + 1.0 for k, v in weights.items()} for component, weights in broadcast_weights.items()}
         
         agg_fedavg = fedavg([w1, w2], [10, 10])
-        self.assertEqual(set(agg_fedavg.keys()), set(broadcast_weights.keys()))
+        self.assertEqual(set(agg_fedavg.keys()), {"encoder", "decoder"})
         
         # Update server
         server.update_global_model(agg_fedavg)
         
         # FedProx aggregation
         agg_fedprox = fedprox(broadcast_weights, [w1, w2], [10, 10], mu=0.01)
-        self.assertEqual(set(agg_fedprox.keys()), set(broadcast_weights.keys()))
+        self.assertEqual(set(agg_fedprox.keys()), {"encoder", "decoder"})
 
     def test_synthetic_hospital_loaders_stage1(self):
         """Verify synthetic loaders return pure NIH dataloaders without support loaders."""
@@ -101,6 +105,7 @@ class Stage1ArchitectureTests(unittest.TestCase):
         with patch("src.federated.simulation.ssl_local_train") as mock_ssl_train:
             mock_ssl_train.return_value = {
                 "encoder_weights": {},
+                "federated_weights": {"encoder": {}, "decoder": {}},
                 "num_samples": 10,
                 "epoch_losses": [1.0],
                 "ssl_loss": 1.0,
