@@ -60,50 +60,26 @@ class Stage1ArchitectureTests(unittest.TestCase):
 
     def test_fedprox_penalty_includes_encoder_and_decoder(self):
         """Verify Stage 1 FedProx penalizes both federated components."""
-        model = build_mae(self.config)
+        class TinyMAE(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.encoder = torch.nn.Linear(2, 2, bias=False)
+                self.decoder = torch.nn.Linear(2, 2, bias=False)
 
+        model = TinyMAE()
         global_weights = {
             "encoder": {k: v.detach().clone() for k, v in model.encoder.state_dict().items()},
             "decoder": {k: v.detach().clone() for k, v in model.decoder.state_dict().items()},
         }
 
-        # Shift one trainable parameter in each federated component.
-        enc_param = next(p for p in model.encoder.parameters() if p.requires_grad)
-        dec_param = next(p for p in model.decoder.parameters() if p.requires_grad)
         with torch.no_grad():
-            enc_param.add_(1.0)
-            dec_param.add_(2.0)
+            model.encoder.weight.fill_(1.0)
+            model.decoder.weight.fill_(2.0)
 
         penalty = _fedprox_penalty(model, global_weights, torch.device("cpu"))
 
-        # Both components must contribute a positive penalty.
-        self.assertGreater(penalty.item(), 0.0)
-
-        # Isolate each component to prove both are included.
-        with torch.no_grad():
-            dec_param.copy_(global_weights["decoder"][next(iter(global_weights["decoder"]))]) if dec_param.shape == global_weights["decoder"][next(iter(global_weights["decoder"]))].shape else None
-        enc_only_model = build_mae(self.config)
-        enc_only_global = {
-            "encoder": {k: v.detach().clone() for k, v in enc_only_model.encoder.state_dict().items()},
-            "decoder": {k: v.detach().clone() for k, v in enc_only_model.decoder.state_dict().items()},
-        }
-        enc_only_param = next(p for p in enc_only_model.encoder.parameters() if p.requires_grad)
-        with torch.no_grad():
-            enc_only_param.add_(1.0)
-        enc_penalty = _fedprox_penalty(enc_only_model, enc_only_global, torch.device("cpu"))
-
-        dec_only_model = build_mae(self.config)
-        dec_only_global = {
-            "encoder": {k: v.detach().clone() for k, v in dec_only_model.encoder.state_dict().items()},
-            "decoder": {k: v.detach().clone() for k, v in dec_only_model.decoder.state_dict().items()},
-        }
-        dec_only_param = next(p for p in dec_only_model.decoder.parameters() if p.requires_grad)
-        with torch.no_grad():
-            dec_only_param.add_(2.0)
-        dec_penalty = _fedprox_penalty(dec_only_model, dec_only_global, torch.device("cpu"))
-
-        self.assertGreater(enc_penalty.item(), 0.0)
-        self.assertGreater(dec_penalty.item(), 0.0)
+        # Encoder contributes 4 * 1^2 and decoder contributes 4 * 2^2.
+        self.assertAlmostEqual(penalty.item(), 20.0, places=5)
 
     def test_server_broadcasts_encoder_and_decoder(self):
         """Verify Stage 1 broadcasts and aggregates encoder + decoder, excluding proto head."""
