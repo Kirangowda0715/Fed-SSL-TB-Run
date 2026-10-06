@@ -252,13 +252,14 @@ class MaskedAutoencoder(nn.Module):
         }
 
     def load_federated_weights(self, state: Dict[str, Dict[str, Any]]) -> None:
-        """Load a complete FLAME state, while accepting old encoder-only states."""
+        """Load federated encoder + decoder weights, preserving a local prototype head."""
         if "encoder" not in state:
             self.load_encoder_weights(state)
             return
         self.encoder.load_state_dict(state["encoder"])
         self.decoder.load_state_dict(state["decoder"])
-        self.proto_head.load_state_dict(state["proto_head"])
+        if "proto_head" in state:
+            self.proto_head.load_state_dict(state["proto_head"])
 
     def load_encoder_weights(self, state_dict: Dict[str, Any]) -> None:
         """Load encoder weights from a state_dict (from federated server)."""
