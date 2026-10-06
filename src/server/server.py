@@ -6,7 +6,7 @@ Central Federated Learning server orchestration.
 Responsibilities:
   - Maintain global MAE model
   - Broadcast global encoder weights to hospitals
-  - Aggregate received encoder weights using FedAvg / FedProx
+  - Aggregate received MAE encoder + decoder weights using FedAvg / FedProx
   - Update and checkpoint the global model
   - Track best model by Montgomery AUC
 """
@@ -156,7 +156,7 @@ class FederatedServer:
         metrics: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Save global encoder checkpoint after each federated round.
+        Save global MAE checkpoint after each federated round.
 
         Args:
             round_num : Current round number (0-indexed)
