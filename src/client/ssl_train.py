@@ -22,6 +22,24 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
+def _fedprox_penalty(model: nn.Module, global_weights: Dict[str, Any], device: torch.device) -> torch.Tensor:
+    """Return FedProx squared-distance penalty for federated encoder + decoder."""
+    if not isinstance(global_weights, dict) or "encoder" not in global_weights or "decoder" not in global_weights:
+        raise ValueError("Stage 1 FedProx requires global encoder and decoder weights.")
+
+    penalty = torch.zeros((), device=device)
+    for component_name, component in (
+        ("encoder", model.encoder),
+        ("decoder", model.decoder),
+    ):
+        reference_weights = global_weights[component_name]
+        for name, param in component.named_parameters():
+            if name in reference_weights:
+                reference = reference_weights[name].to(device=device, dtype=param.dtype)
+                penalty = penalty + torch.sum((param - reference) ** 2)
+    return penalty
+
+
 def ssl_local_train(
     hospital_id: int,
     model: nn.Module,
@@ -100,24 +118,7 @@ def ssl_local_train(
             # FedProx proximal term: μ/2 * ||w_local - w_global||²
             # Computed over live encoder parameters to preserve the autograd computational graph
             if is_fedprox and global_weights is not None:
-                if isinstance(global_weights, dict) and "encoder" in global_weights:
-                    component_weights = {
-                        "encoder": model.encoder.named_parameters(),
-                        "decoder": model.decoder.named_parameters(),
-                    }
-                else:
-                    # Backward compatibility for legacy encoder-only callers.
-                    component_weights = {"encoder": model.encoder.named_parameters()}
-                    global_weights = {"encoder": global_weights}
-
-                proximal_term = 0.0
-                for component, parameters in component_weights.items():
-                    reference_weights = global_weights.get(component, {})
-                    for name, param in parameters:
-                        if name in reference_weights:
-                            g_param = reference_weights[name].to(device)
-                            proximal_term = proximal_term + torch.sum((param - g_param) ** 2)
-
+                proximal_term = _fedprox_penalty(model, global_weights, device)
                 loss = loss + (mu / 2.0) * proximal_term
 
             loss.backward()
