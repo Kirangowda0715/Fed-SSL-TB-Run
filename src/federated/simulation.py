@@ -256,7 +256,7 @@ def main():
             )
 
         # 3. Collect weights and sample counts
-        encoder_weights_list = [r["encoder_weights"] for r in hospital_results]
+        federated_weights_list = [r["federated_weights"] for r in hospital_results]
         sample_counts        = [r["num_samples"] for r in hospital_results]
         ssl_losses           = [r["epoch_losses"][-1] for r in hospital_results]
         mean_ssl_loss        = float(np.mean(ssl_losses))
@@ -264,7 +264,7 @@ def main():
         print(f"\n  [Round {round_num+1}] Mean SSL Loss: {mean_ssl_loss:.4f}")
 
         # 4. Aggregate encoder weights
-        aggregated_weights = server.aggregate(encoder_weights_list, sample_counts)
+        aggregated_weights = server.aggregate(federated_weights_list, sample_counts)
 
         # 5. Update global model encoder
         server.update_global_model(aggregated_weights)
