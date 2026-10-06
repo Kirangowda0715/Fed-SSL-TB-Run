@@ -67,6 +67,10 @@ class Stage1ArchitectureTests(unittest.TestCase):
                 self.decoder = torch.nn.Linear(2, 2, bias=False)
 
         model = TinyMAE()
+        with torch.no_grad():
+            model.encoder.weight.fill_(0.0)
+            model.decoder.weight.fill_(0.0)
+
         global_weights = {
             "encoder": {k: v.detach().clone() for k, v in model.encoder.state_dict().items()},
             "decoder": {k: v.detach().clone() for k, v in model.decoder.state_dict().items()},
