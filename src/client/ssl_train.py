@@ -6,7 +6,7 @@ Local SSL training loop for each hospital using a Masked Autoencoder (MAE).
 Key design decisions:
   - Encoder + decoder weights are returned to the server for federated MAE training
   - The prototype head is not trained or shared during Stage 1
-  - FedProx proximal term added to client loss when global_weights provided
+  - FedProx proximal term added to encoder + decoder client loss when global_weights provided
   - AdamW optimizer with cosine annealing LR schedule
 """
 
@@ -38,7 +38,7 @@ def ssl_local_train(
         model          : MaskedAutoencoder instance (encoder + decoder)
         dataloader     : DataLoader for this hospital's NIH shard
         config         : Loaded config (SimpleNamespace)
-        global_weights : Encoder state_dict from the global server model.
+        global_weights : Nested encoder + decoder state dict from the global server model.
                          If provided, FedProx proximal regularization is applied.
                          If None, standard MAE loss only (FedAvg mode).
         device         : torch.device; defaults to CUDA if available
@@ -100,12 +100,24 @@ def ssl_local_train(
             # FedProx proximal term: μ/2 * ||w_local - w_global||²
             # Computed over live encoder parameters to preserve the autograd computational graph
             if is_fedprox and global_weights is not None:
-                enc_weights = global_weights.get("encoder", global_weights) if isinstance(global_weights, dict) else global_weights
+                if isinstance(global_weights, dict) and "encoder" in global_weights:
+                    component_weights = {
+                        "encoder": model.encoder.named_parameters(),
+                        "decoder": model.decoder.named_parameters(),
+                    }
+                else:
+                    # Backward compatibility for legacy encoder-only callers.
+                    component_weights = {"encoder": model.encoder.named_parameters()}
+                    global_weights = {"encoder": global_weights}
+
                 proximal_term = 0.0
-                for name, param in model.encoder.named_parameters():
-                    if name in enc_weights:
-                        g_param = enc_weights[name].to(device)
-                        proximal_term = proximal_term + torch.sum((param - g_param) ** 2)
+                for component, parameters in component_weights.items():
+                    reference_weights = global_weights.get(component, {})
+                    for name, param in parameters:
+                        if name in reference_weights:
+                            g_param = reference_weights[name].to(device)
+                            proximal_term = proximal_term + torch.sum((param - g_param) ** 2)
+
                 loss = loss + (mu / 2.0) * proximal_term
 
             loss.backward()
