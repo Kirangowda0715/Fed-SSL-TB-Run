@@ -4,7 +4,8 @@ src/client/ssl_train.py
 Local SSL training loop for each hospital using a Masked Autoencoder (MAE).
 
 Key design decisions:
-  - Only encoder weights are returned to the server (decoder stays local)
+  - Encoder + decoder weights are returned to the server for federated MAE training
+  - The prototype head is not trained or shared during Stage 1
   - FedProx proximal term added to client loss when global_weights provided
   - AdamW optimizer with cosine annealing LR schedule
 """
@@ -124,8 +125,12 @@ def ssl_local_train(
         mean_epoch_loss = epoch_loss / max(num_batches, 1)
         epoch_losses.append(mean_epoch_loss)
 
-    # Return only encoder weights — decoder stays local
-    encoder_weights = model.get_encoder_weights()
+    # Stage 1 federates the complete MAE reconstruction path: encoder + decoder.
+    # The prototype head is intentionally excluded from Stage 1 SSL.
+    federated_weights = {
+        "encoder": {k: v.detach().cpu().clone() for k, v in model.encoder.state_dict().items()},
+        "decoder": {k: v.detach().cpu().clone() for k, v in model.decoder.state_dict().items()},
+    }
 
     print(
         f"  [Hospital {hospital_id}] SSL training done | "
@@ -134,7 +139,9 @@ def ssl_local_train(
     )
 
     return {
-        "encoder_weights": encoder_weights,
+        "federated_weights": federated_weights,
+        # Keep this alias temporarily for callers/tests that inspect encoder weights.
+        "encoder_weights": federated_weights["encoder"],
         "num_samples": num_samples,
         "epoch_losses": epoch_losses,
         "ssl_loss": epoch_losses[-1] if epoch_losses else float("nan"),
