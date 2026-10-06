@@ -5,7 +5,7 @@ Central Federated Learning server orchestration.
 
 Responsibilities:
   - Maintain global MAE model
-  - Broadcast global encoder weights to hospitals
+  - Broadcast global encoder + decoder weights to hospitals (prototype head stays local)
   - Aggregate received MAE encoder + decoder weights using FedAvg / FedProx
   - Update and checkpoint the global model
   - Track best model by Montgomery AUC
@@ -83,18 +83,22 @@ class FederatedServer:
 
     def broadcast(self) -> Dict[str, Any]:
         """
-        Return a copy of the current global encoder weights to broadcast to hospitals.
+        Return Stage 1 encoder + decoder weights for broadcast to hospitals.
 
-        Returns:
-            encoder_weights : Deep-copied encoder state_dict
+        The prototype head is intentionally excluded from the Stage 1
+        federated path.
         """
         assert self.global_model is not None, (
             "Global model not initialized. Call initialize_global_model() first."
         )
-        return self.global_model.get_encoder_weights()
+        full_weights = self.global_model.get_federated_weights()
+        return {
+            "encoder": full_weights["encoder"],
+            "decoder": full_weights["decoder"],
+        }
 
     def get_global_weights(self) -> Dict[str, Any]:
-        """Alias for broadcast — returns global encoder state_dict."""
+        """Alias for broadcast — returns Stage 1 encoder + decoder weights."""
         return self.broadcast()
 
     # ─── Aggregation ─────────────────────────────────────────────────────────
