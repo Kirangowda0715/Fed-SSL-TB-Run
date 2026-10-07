@@ -45,7 +45,7 @@ from src.datasets.loader import (
     NIHDataset,
     get_base_transform, get_eval_transform,
 )
-from src.datasets.splitter import split_nih_to_hospitals, load_hospital_indices
+from src.datasets.splitter import split_nih_to_hospitals, load_hospital_indices, split_cache_matches
 from src.models.mae import build_mae
 from src.client.ssl_train import ssl_local_train
 from src.server.server import FederatedServer
@@ -242,7 +242,7 @@ def main():
         print(f"  ROUND {round_num + 1} / {config.federated.rounds}")
         print(f"{'='*70}")
 
-        # 1. Broadcast global encoder weights to hospitals.
+        # 1. Broadcast global encoder + decoder weights to hospitals.
         global_weights = server.broadcast()
 
         # 2. Local SSL training at each hospital
@@ -263,10 +263,10 @@ def main():
 
         print(f"\n  [Round {round_num+1}] Mean SSL Loss: {mean_ssl_loss:.4f}")
 
-        # 4. Aggregate encoder weights
+        # 4. Aggregate federated encoder + decoder weights
         aggregated_weights = server.aggregate(federated_weights_list, sample_counts)
 
-        # 5. Update global model encoder
+        # 5. Update global encoder + decoder
         server.update_global_model(aggregated_weights)
 
         # 6. Save checkpoint
@@ -393,43 +393,40 @@ def _build_real_loaders(config, num_hospitals, batch_size, image_size):
     
     print(f"Loaded NIH dataset with {len(nih_dataset)} images.")
 
-    # Split NIH → hospitals (loads from disk if already computed)
+    # Split NIH → hospitals. Reuse a cache only when its exact configuration
+    # matches dataset size, hospital count, strategy, alpha and seed.
     processed_dir = getattr(config.data, "processed_dir", "data/processed")
     hospital_indices_list = []
-    hospital_1_index_path = Path(processed_dir) / "hospital_1" / "indices.npy"
+    alpha_val = float(getattr(config.data, "split_alpha", 0.5))
+    split_seed = int(config.finetuning.seed)
 
-    # Robustness: Check if pre-computed indices are valid for current dataset size
-    should_recompute = not hospital_1_index_path.exists()
-    if not should_recompute:
-        # Load all indices into a list to check total coverage
-        all_loaded_indices = []
+    cache_valid = split_cache_matches(
+        save_dir=processed_dir,
+        n=len(nih_dataset),
+        num_hospitals=num_hospitals,
+        strategy=config.data.split_strategy,
+        alpha=alpha_val,
+        seed=split_seed,
+    )
+
+    if cache_valid:
+        print("[Splitter] Loading configuration-matched hospital splits from disk...")
         try:
             for i in range(1, num_hospitals + 1):
-                all_loaded_indices.extend(load_hospital_indices(i, save_dir=processed_dir))
+                hospital_indices_list.append(load_hospital_indices(i, save_dir=processed_dir))
         except FileNotFoundError:
-            # Cached splits may have been generated with a different hospital count.
-            should_recompute = True
-        
-        # Recompute if existing total indices don't match current dataset size
-        if not should_recompute and len(all_loaded_indices) != len(nih_dataset):
-            print(f"[Splitter] Pre-computed indices count ({len(all_loaded_indices)}) differs from current "
-                  f"dataset size ({len(nih_dataset)}). Re-computing...")
-            should_recompute = True
+            cache_valid = False
+            hospital_indices_list = []
 
-    if not should_recompute:
-        print("[Splitter] Loading pre-computed hospital splits from disk...")
-        for i in range(1, num_hospitals + 1):
-            indices = load_hospital_indices(i, save_dir=processed_dir)
-            hospital_indices_list.append(indices)
-    else:
-        print("[Splitter] Computing hospital splits...")
-        alpha_val = getattr(config.data, "split_alpha", 0.5)
+    if not cache_valid:
+        print("[Splitter] Cached split missing or configuration-mismatched; recomputing...")
         hospital_indices_list = split_nih_to_hospitals(
             dataset=nih_dataset,
             num_hospitals=num_hospitals,
             strategy=config.data.split_strategy,
             alpha=alpha_val,
             save_dir=processed_dir,
+            seed=split_seed,
         )
 
     pin_memory = torch.cuda.is_available()
