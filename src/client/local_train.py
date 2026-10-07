@@ -86,7 +86,7 @@ def _protocol_log(k, support_labels, query_count, projection_dim, freeze_encoder
     print(f"Encoder Frozen   : {freeze_encoder}")
     print(f"Adaptation Epochs: {epochs}")
     print(f"Seed             : {seed}")
-    print(f"Adaptation Query : {query_count}")
+    print(f"Evaluation Query : {query_count}")
 
 
 def finetune_local(
@@ -96,7 +96,7 @@ def finetune_local(
     config,
     device: Optional[torch.device] = None,
 ) -> Tuple[PrototypicalHead, Dict[str, Any]]:
-    """Adapt a copied encoder and projection head using Shenzhen support/query data."""
+    """Adapt encoder and projection head using Shenzhen support only; query is evaluation-only."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     seed = int(config.finetuning.seed)
     seed_everything(seed)
@@ -128,49 +128,44 @@ def finetune_local(
     head.support_dataset = dataset
     head.support_labels = support_labels.detach().cpu()
 
-    if freeze_encoder:
-        encoder.eval()
-        with torch.no_grad():
-            support_embeddings = encoder(support_images).detach()
-        
-        # Pre-extract all query embeddings
-        extract_loader = _loader(dataset, query_idx, batch_size, shenzhen_loader, shuffle=False)
-        query_embeddings_list = []
-        query_labels_list = []
-        with torch.no_grad():
-            for imgs, lbls in extract_loader:
-                emb = encoder(imgs.to(device)).detach()
-                query_embeddings_list.append(emb)
-                query_labels_list.append(lbls)
-        all_query_embeddings = torch.cat(query_embeddings_list, dim=0)
-        all_query_labels = torch.cat(query_labels_list, dim=0)
-        
-        from torch.utils.data import TensorDataset
-        query_emb_dataset = TensorDataset(all_query_embeddings, all_query_labels)
-        query_emb_loader = DataLoader(query_emb_dataset, batch_size=batch_size, shuffle=True)
-        
-        for epoch in range(int(config.finetuning.epochs)):
-            head.train()
-            for q_emb, q_lbl in query_emb_loader:
-                prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
-                loss, _ = head.prototypical_loss(q_emb.to(device), q_lbl.to(device), prototypes)
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(train_parameters, 1.0)
-                optimizer.step()
-    else:
-        for epoch in range(int(config.finetuning.epochs)):
-            encoder.train()
-            head.train()
-            for query_images, query_labels in query_loader:
-                support_embeddings = encoder(support_images)
-                query_embeddings = encoder(query_images.to(device))
-                prototypes = head.get_learnable_prototypes(support_embeddings, support_labels)
-                loss, _ = head.prototypical_loss(query_embeddings, query_labels.to(device), prototypes)
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(train_parameters, 1.0)
-                optimizer.step()
+    # Query samples are evaluation-only. They must never contribute to
+    # adaptation gradients or model selection.
+    # Use leave-one-out support episodes so the projection/encoder can adapt
+    # without training on the held-out query set.
+    if k < 2:
+        raise ValueError(
+            "Few-shot adaptation with a trainable prototypical head requires "
+            "K >= 2 per class to construct leave-one-out support episodes."
+        )
+
+    for epoch in range(int(config.finetuning.epochs)):
+        encoder.train(not freeze_encoder)
+        head.train()
+
+        support_embeddings = encoder(support_images)
+        episode_losses = []
+        for support_position in range(len(support_labels)):
+            support_mask = torch.ones(len(support_labels), dtype=torch.bool, device=device)
+            support_mask[support_position] = False
+
+            episode_support_embeddings = support_embeddings[support_mask]
+            episode_support_labels = support_labels[support_mask]
+            query_embedding = support_embeddings[support_position : support_position + 1]
+            query_label = support_labels[support_position : support_position + 1]
+
+            prototypes = head.get_learnable_prototypes(
+                episode_support_embeddings, episode_support_labels
+            )
+            loss, _ = head.prototypical_loss(
+                query_embedding, query_label, prototypes
+            )
+            episode_losses.append(loss)
+
+        loss = torch.stack(episode_losses).mean()
+        optimizer.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(train_parameters, 1.0)
+        optimizer.step()
 
     encoder.eval()
     head.eval()
