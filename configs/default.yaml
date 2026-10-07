@@ -16,19 +16,19 @@ model:
   decoder_depth: 4
 
 ssl:
-  epochs_per_round: 2
+  epochs_per_round: 1
   batch_size: 6
   lr: 1.0e-3
-  limit_samples: 20000
+  limit_samples: 500
   optimizer: adamw
 
 federated:
-  rounds: 30
+  rounds: 1
   aggregation: fedprox       # options: fedavg, fedprox
   fedprox_mu: 0.01
 
 finetuning:
-  few_shot_k: 5              # 5-shot = 5 samples per class, 10 total for binary TB
+  few_shot_k: 5
   projection_dim: 128
   epochs: 30
   lr: 1.0e-3
