@@ -3,8 +3,8 @@ src/models/encoder.py
 ---------------------
 Encoder backbone factory: ResNet50 or ViT-Small.
 
-Only the encoder is shared across hospitals in the federated setting.
-The decoder stays local (privacy + efficiency).
+The encoder is federated together with the MAE decoder during Stage 1.
+The prototype head remains local.
 """
 
 import torch
