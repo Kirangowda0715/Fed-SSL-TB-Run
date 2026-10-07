@@ -42,7 +42,8 @@ def main():
         projection_dim=config.finetuning.projection_dim,
     )
     model.encoder.load_state_dict(checkpoint["encoder_state_dict"])
-    encoder = model.encoder
+    # The checkpoint is loaded on CPU; Stage 2 may run on CUDA.
+    encoder = model.encoder.to(device)
 
     # Use deterministic preprocessing for both support/query and external test.
     # This makes the first research run reproducible and avoids random
