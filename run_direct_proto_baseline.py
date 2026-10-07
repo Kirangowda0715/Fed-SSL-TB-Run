@@ -111,6 +111,9 @@ def main():
         for name in ("auc", "accuracy", "sensitivity", "specificity", "f1", "balanced_accuracy"):
             print(f"  {name:20s}: {metrics[name]:.4f}")
 
+    def serializable_metrics(metrics):
+        return {name: float(metrics[name]) for name in ("auc", "accuracy", "sensitivity", "specificity", "f1", "balanced_accuracy")}
+
     result = {
         "checkpoint": str(ckpt_path),
         "checkpoint_round": int(ckpt.get("round", -1)),
@@ -118,8 +121,8 @@ def main():
         "seed": int(cfg.finetuning.seed),
         "learned_projection": False,
         "adaptation_epochs": 0,
-        "shenzhen_query_metrics": shenzhen_metrics,
-        "montgomery_metrics": montgomery_metrics,
+        "shenzhen_query_metrics": serializable_metrics(shenzhen_metrics),
+        "montgomery_metrics": serializable_metrics(montgomery_metrics),
         "support_indices": support_idx.tolist(),
     }
     out = Path(cfg.logging.log_dir)
