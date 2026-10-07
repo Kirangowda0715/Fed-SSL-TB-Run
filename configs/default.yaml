@@ -23,7 +23,7 @@ ssl:
   optimizer: adamw
 
 federated:
-  rounds: 1
+  rounds: 2
   aggregation: fedprox       # options: fedavg, fedprox
   fedprox_mu: 0.01
 
