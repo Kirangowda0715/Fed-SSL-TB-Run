@@ -34,9 +34,12 @@ def _fedprox_penalty(model: nn.Module, global_weights: Dict[str, Any], device: t
     ):
         reference_weights = global_weights[component_name]
         for name, param in component.named_parameters():
-            if name in reference_weights:
-                reference = reference_weights[name].to(device=device, dtype=param.dtype)
-                penalty = penalty + torch.sum((param - reference) ** 2)
+            if name not in reference_weights:
+                raise ValueError(
+                    f"Missing {component_name} parameter '{name}' in global FedProx weights."
+                )
+            reference = reference_weights[name].to(device=device, dtype=param.dtype)
+            penalty = penalty + torch.sum((param - reference) ** 2)
     return penalty
 
 
@@ -63,7 +66,7 @@ def ssl_local_train(
 
     Returns:
         Dict with:
-            'encoder_weights' : Encoder state_dict (to send to server)
+            'federated_weights' : Nested encoder + decoder state_dicts (to send to server)
             'num_samples'     : Number of training samples seen
             'epoch_losses'    : List of mean loss per epoch
     """

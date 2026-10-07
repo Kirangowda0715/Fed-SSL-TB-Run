@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 from src.datasets.loader import ShenzhenDataset, MontgomeryDataset, get_eval_transform
 from src.utils.config import load_config
+from src.datasets.splitter import split_cache_matches
 
 PASS, WARN, FAIL = "PASS", "WARNING", "FAIL"
 
@@ -103,8 +104,23 @@ def main():
     if config.data.split_strategy=="non_iid":
         audit.add("Non-IID",WARN,"NIH is unlabeled in Stage 1; current Dirichlet split represents quantity/statistical skew, not confirmed pathology skew")
     split_files=list(Path(config.data.processed_dir).glob("hospital_*/indices.npy"))
-    if split_files: audit.add("Split cache",WARN,"cached indices exist without stored alpha/strategy/seed metadata")
-    else: audit.add("Split cache",PASS,"no cached hospital split")
+    if split_files:
+        valid = split_cache_matches(
+            save_dir=config.data.processed_dir,
+            n=int(getattr(config.ssl, "limit_samples", 0)),
+            num_hospitals=int(config.data.num_hospitals),
+            strategy=config.data.split_strategy,
+            alpha=float(config.data.split_alpha),
+            seed=int(config.finetuning.seed),
+        )
+        audit.add(
+            "Split cache",
+            PASS if valid else WARN,
+            "cached split matches current configuration" if valid
+            else "cached split is missing or does not match current configuration; training will recompute it",
+        )
+    else:
+        audit.add("Split cache",PASS,"no cached hospital split")
 
     c=audit.summary()
     out=logdir/"research_audit_report.json"; out.parent.mkdir(parents=True,exist_ok=True)

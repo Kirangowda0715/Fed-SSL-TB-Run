@@ -1,75 +1,42 @@
 data:
   nih_path: "/kaggle/input/datasets/khanfashee/nih-chest-x-ray-14-224x224-resized"
-
   shenzhen_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-shenzhen/images"
-
   montgomery_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-montgomery"
-
   processed_dir: "/kaggle/working/Fed-SSL-TB/data/processed"
-
   image_size: 224
-
   num_hospitals: 10
   split_strategy: non_iid
   split_alpha: 1.0
 
-
 model:
   backbone: "vit_tiny"
-
   embed_dim: 192
-
-  mask_ratio: 0.75
-
+  mask_ratio: 0.80
   decoder_depth: 4
-  projection_dim: 128
-
-
-flame:
-  alpha: 0.7
-  few_shot_k: 5
-  allow_support_reuse: true
-  support_sampling: per_hospital
-
 
 ssl:
-  epochs_per_round: 2
-
+  epochs_per_round: 1
   batch_size: 16
-
   lr: 1.0e-3
-
-  limit_samples: 25000
-
+  limit_samples: 20000
   optimizer: adamw
-
 
 federated:
   rounds: 30
-
   aggregation: fedprox
-
   fedprox_mu: 0.01
 
-
 finetuning:
-  few_shot_k: 5  # 5 samples per class, 10 support samples total for binary TB
+  few_shot_k: 5
   projection_dim: 128
-
-  epochs: 10
-
+  epochs: 30
   lr: 1.0e-3
-
-  freeze_encoder: false
-
+  freeze_encoder: true
   seed: 42
-
   support_sampling: random_stratified
-
 
 evaluation:
   test_set: montgomery
-
   metrics:
     - auc
     - accuracy
@@ -78,8 +45,6 @@ evaluation:
     - f1
     - balanced_accuracy
 
-
 logging:
-  log_dir: "/kaggle/working/Fed-SSL-TB/experiments/logs"
-
-  checkpoint_dir: "/kaggle/working/Fed-SSL-TB/experiments/checkpoints"
+  log_dir: "/kaggle/working/Fed-SSL-TB/experiments/logs/main_stage1"
+  checkpoint_dir: "/kaggle/working/Fed-SSL-TB/experiments/checkpoints/main_stage1"

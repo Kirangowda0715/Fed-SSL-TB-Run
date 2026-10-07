@@ -8,7 +8,6 @@ Responsibilities:
   - Broadcast global encoder + decoder weights to hospitals (prototype head stays local)
   - Aggregate received MAE encoder + decoder weights using FedAvg / FedProx
   - Update and checkpoint the global model
-  - Track best model by Montgomery AUC
 """
 
 import os
@@ -43,11 +42,6 @@ class FederatedServer:
         # Checkpoint bookkeeping
         self.checkpoint_dir = Path(config.logging.checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-        # Best model tracking (by Montgomery AUC)
-        self.best_auc: float = 0.0
-        self.best_round: int = -1
-        self.best_encoder_weights: Optional[Dict[str, Any]] = None
 
         # Aggregation strategy
         self.aggregation = config.federated.aggregation.lower()
@@ -109,14 +103,14 @@ class FederatedServer:
         sample_counts: List[int],
     ) -> Dict[str, Any]:
         """
-        Aggregate encoder weights from hospitals using configured strategy.
+        Aggregate federated encoder + decoder weights from hospitals using configured strategy.
 
         Args:
             received_weights : List of encoder state_dicts from hospitals
             sample_counts    : Number of training samples per hospital
 
         Returns:
-            Aggregated encoder state_dict
+            Aggregated encoder + decoder state_dict
         """
         if self.aggregation == "fedavg":
             aggregated = fedavg(received_weights, sample_counts)
@@ -141,7 +135,7 @@ class FederatedServer:
 
     def update_global_model(self, aggregated_weights: Dict[str, Any]) -> None:
         """
-        Load aggregated weights into the global encoder.
+        Load aggregated encoder + decoder weights into the global model.
 
         Args:
             aggregated_weights : Aggregated encoder state_dict from aggregate()
@@ -188,25 +182,6 @@ class FederatedServer:
         ckpt_path = self.checkpoint_dir / f"flame_round_{round_num:03d}.pt"
         torch.save(checkpoint, str(ckpt_path))
 
-        # Track best model by AUC
-        if metrics and "auc" in metrics:
-            current_auc = metrics["auc"]
-            if current_auc > self.best_auc:
-                self.best_auc = current_auc
-                self.best_round = round_num
-                self.best_encoder_weights = copy.deepcopy(
-                    self.global_model.get_encoder_weights()
-                )
-                # Save best model separately
-                best_path = self.checkpoint_dir / "best_flame.pt"
-                torch.save(
-                    {**checkpoint, "best_auc": self.best_auc},
-                    str(best_path),
-                )
-                print(
-                    f"  [Server] [BEST MODEL] saved | "
-                    f"Round {round_num} | AUC={self.best_auc:.4f}"
-                )
 
         return str(ckpt_path)
 
@@ -247,11 +222,4 @@ class FederatedServer:
         return self.global_model
 
     def summary(self) -> str:
-        """Return a summary string of server state."""
-        if self.best_round >= 0:
-            return (
-                f"FederatedServer | "
-                f"Aggregation: {self.aggregation} | "
-                f"Best AUC: {self.best_auc:.4f} @ Round {self.best_round}"
-            )
         return f"FederatedServer | Aggregation: {self.aggregation}"

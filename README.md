@@ -14,7 +14,7 @@ A Federated Learning system for detecting Tuberculosis (TB) using self-supervise
 *(Once you take screenshots of your UI, save them in the `docs/images/` folder so they appear here!)*
 
 ### Real-Time Training Dashboard
-Monitor global loss convergence across 5 federated hospitals and track live medical metrics (Sensitivity, Specificity, F1) seamlessly.
+Monitor global loss convergence across the configured federated hospitals and track live medical metrics (Sensitivity, Specificity, F1) seamlessly.
 ![Dashboard UI](docs/images/dashboard.png)
 
 ### Live TB Analysis & Inference
@@ -22,7 +22,7 @@ Upload unlabelled X-rays for instant diagnostic inference powered by our fine-tu
 ![TB Analysis UI](docs/images/analysis.png)
 
 ### Animated Federated Simulation
-Visualize the Privacy-First FedProx protocol in action. Zero raw patient data leaves the hospital boundaries; only mathematically encrypted weights are shared to the central cloud.
+Visualize the Privacy-First FedProx protocol in action. Zero raw patient images leave the hospital boundaries; Stage 1 shares model weights only. Encryption and secure aggregation are not implemented by this repository.
 ![Federated Map UI](docs/images/federated.png)
 
 ### System Architecture
@@ -32,7 +32,7 @@ A deep dive into the engineering constraints, hardware optimization (RTX 2050), 
 ---
 
 ## 🌟 Architectural Highlights
-- **Federated Learning (FedProx)**: Privacy-preserving training across 5 simulated hospitals. Utilizes FedProx to handle the extreme non-IID (unbalanced) data distributions common in real-world clinics.
+- **Federated Learning (FedProx)**: Model training across the configured simulated hospitals using quantity-skewed NIH partitions. Utilizes FedProx to handle the extreme non-IID (unbalanced) data distributions common in real-world clinics.
 - **Vision Transformer (ViT-Tiny)**: Replaced legacy CNNs with a state-of-the-art Transformer backbone. The architecture ensures the federated simulation runs extremely efficiently on consumer-grade GPUs (e.g., RTX 2050 4GB).
 - **Masked Autoencoder (MAE)**: Self-supervised learning from unlabeled X-rays. The model learns fundamental human anatomy by reconstructing masked patches of chest scans.
 - **Few-Shot TB Detection**: A projection MLP maps encoder features into prototype space; class prototypes are means of exactly `k` Shenzhen Normal and `k` Shenzhen TB support samples.
@@ -44,7 +44,7 @@ This project utilizes a subset of three major chest X-ray datasets. Note that du
 | Dataset | Purpose | Images Used | Split Strategy |
 | :--- | :--- | :--- | :--- |
 | **NIH ChestX-ray14** | Federated SSL representation learning (unlabeled) | Configured limit | Configured split |
-| **Shenzhen TB** | Sparse labeled support and adaptation/query-training data | Dataset-dependent | Deterministic seeded sampling |
+| **Shenzhen TB** | K-shot support/adaptation and query evaluation | Dataset-dependent | Deterministic seeded sampling |
 | **Montgomery TB** | Held-out cross-hospital final evaluation | Dataset-dependent | Never used during adaptation |
 
 > [!IMPORTANT]
@@ -68,7 +68,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ### 2. Prepare Data
 Ensure your data is placed in `data/raw/` and then run the data splitter to simulate the 5 hospitals:
 ```bash
-python -c "from src.datasets.loader import NIHDataset; from src.datasets.splitter import split_nih_to_hospitals; from src.utils.config import load_config; cfg = load_config(); ds = NIHDataset(cfg.data.nih_path, limit=20000); split_nih_to_hospitals(ds, strategy='non_iid', alpha=2.0)"
+python -c "from src.utils.config import load_config; from src.datasets.loader import NIHDataset; from src.datasets.splitter import split_nih_to_hospitals; cfg = load_config('configs/kaggle.yaml'); ds = NIHDataset(cfg.data.nih_path, limit=cfg.ssl.limit_samples); split_nih_to_hospitals(ds, num_hospitals=cfg.data.num_hospitals, strategy=cfg.data.split_strategy, alpha=cfg.data.split_alpha, save_dir=cfg.data.processed_dir, seed=cfg.finetuning.seed)"
 ```
 
 ### 3. Federated Training
