@@ -34,10 +34,13 @@ class TrackingShenzhenDataset(Dataset):
 class TinyEncoder(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.proj = torch.nn.Linear(12, 4)
+        # Adaptive average pooling keeps the test encoder compatible with
+        # local_train._get_embed_dim(), which probes a 224x224 image.
+        self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
+        self.proj = torch.nn.Linear(3, 4)
 
     def forward(self, x):
-        return self.proj(x.flatten(1))
+        return self.proj(self.pool(x).flatten(1))
 
 
 class Stage2LeakageTests(unittest.TestCase):
@@ -59,7 +62,6 @@ class Stage2LeakageTests(unittest.TestCase):
             ssl=types.SimpleNamespace(batch_size=4),
         )
 
-        # With seed=42, the exact support indices are determined by _sample_kshot.
         support_idx, query_idx = local_train._sample_kshot(
             dataset.get_labels(), k=2, seed=42
         )
@@ -74,8 +76,8 @@ class Stage2LeakageTests(unittest.TestCase):
                 pass
 
             def step(self):
-                # This is the critical assertion: no evaluation-query image
-                # may have been accessed before adaptation completes.
+                # No evaluation-query image may have been accessed before
+                # adaptation completes.
                 leaked = query_set.intersection(dataset.accessed)
                 if leaked:
                     raise AssertionError(
