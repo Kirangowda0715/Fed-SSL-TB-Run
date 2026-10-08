@@ -1,0 +1,50 @@
+data:
+  nih_path: "/kaggle/input/datasets/khanfashee/nih-chest-x-ray-14-224x224-resized"
+  shenzhen_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-shenzhen/images"
+  montgomery_path: "/kaggle/input/datasets/raddar/tuberculosis-chest-xrays-montgomery"
+  processed_dir: "/kaggle/working/Fed-SSL-TB/data/processed"
+  image_size: 224
+  num_hospitals: 10
+  split_strategy: non_iid
+  split_alpha: 1.0
+
+model:
+  backbone: "vit_tiny"
+  embed_dim: 192
+  mask_ratio: 0.80
+  decoder_depth: 4
+
+ssl:
+  epochs_per_round: 2
+  batch_size: 16
+  lr: 1.0e-3
+  limit_samples: 20000
+  optimizer: adamw
+
+federated:
+  rounds: 100
+  aggregation: fedprox
+  fedprox_mu: 0.01
+
+finetuning:
+  few_shot_k: 20
+  projection_dim: 128
+  epochs: 50
+  lr: 1.0e-3
+  freeze_encoder: true
+  seed: 42
+  support_sampling: random_stratified
+
+evaluation:
+  test_set: montgomery
+  metrics:
+    - auc
+    - accuracy
+    - sensitivity
+    - specificity
+    - f1
+    - balanced_accuracy
+
+logging:
+  log_dir: "/kaggle/working/Fed-SSL-TB/experiments/logs/suhas"
+  checkpoint_dir: "/kaggle/working/Fed-SSL-TB/experiments/checkpoints/suhas"
