@@ -37,10 +37,18 @@ def _rooted_path(configured_path):
 
 
 def _find_checkpoint():
-    checkpoint_dir = _rooted_path(config.logging.checkpoint_dir)
-    candidates = [checkpoint_dir / "best_flame.pt", checkpoint_dir / "best_encoder.pt"]
-    candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), reverse=True))
-    candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), reverse=True))
+    search_dirs = [
+        _rooted_path(config.logging.checkpoint_dir),
+        _ROOT / "experiments" / "results" / "30_round" / "checkpoints",
+        _ROOT / "experiments" / "checkpoints" / "main",
+    ]
+    candidates = []
+    for checkpoint_dir in search_dirs:
+        if not checkpoint_dir.exists():
+            continue
+        candidates.extend([checkpoint_dir / "best_flame.pt", checkpoint_dir / "best_encoder.pt"])
+        candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), reverse=True))
+        candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), reverse=True))
     return next((path for path in candidates if path.exists()), None)
 
 
@@ -106,20 +114,25 @@ def health_check():
 
 @app.get("/metrics")
 def get_training_metrics():
-    log_path = _rooted_path(config.logging.log_dir) / "training_log.json"
-    if not log_path.exists():
-        return []
-    with log_path.open("r") as handle:
-        return json.load(handle)
+    search_paths = [
+        _rooted_path(config.logging.log_dir) / "training_log.json",
+        _ROOT / "experiments" / "results" / "30_round" / "logs" / "training_log.json",
+        _ROOT / "experiments" / "results" / "30_round" / "logs" / "main_stage1" / "training_log.json",
+        _ROOT / "experiments" / "logs" / "main" / "training_log.json",
+    ]
+    for log_path in search_paths:
+        if log_path.exists():
+            with log_path.open("r") as handle:
+                return json.load(handle)
+    return []
 
 
 @app.get("/status")
 def get_training_status():
     metrics = get_training_metrics()
     latest_round = max((entry.get("round", -1) for entry in metrics), default=-1)
-    total_rounds = int(config.federated.rounds)
-    checkpoint_dir = _rooted_path(config.logging.checkpoint_dir)
-    checkpoints = sorted(checkpoint_dir.glob("*.pt")) if checkpoint_dir.exists() else []
+    total_rounds = max(int(config.federated.rounds), latest_round + 1)
+    checkpoint = _find_checkpoint()
     completed = latest_round + 1
     return {
         "state": "COMPLETED" if completed >= total_rounds else "IDLE",
@@ -129,7 +142,7 @@ def get_training_status():
         "hospital_count": int(config.data.num_hospitals),
         "aggregation": config.federated.aggregation,
         "latest_round": metrics[-1] if metrics else None,
-        "checkpoint": {"available": bool(checkpoints), "name": checkpoints[-1].name if checkpoints else None},
+        "checkpoint": {"available": bool(checkpoint), "name": checkpoint.name if checkpoint else None},
     }
 
 
