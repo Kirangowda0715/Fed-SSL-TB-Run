@@ -1,130 +1,109 @@
-# Federated Self-Supervised Learning (FedSSL) for TB Detection
+# FedSSL: Federated Self-Supervised Learning for Tuberculosis Detection
 
-> [!TIP]
-> **[📥 Download Documentation as Word (.docx)](docs/Federated_SSL_Project_Study_Notes.docx)**
+FedSSL is a research project exploring federated self-supervised representation learning for chest X-ray images, followed by few-shot adaptation for tuberculosis (TB) classification. It uses NIH ChestX-ray14 images for self-supervised training, Shenzhen data for few-shot support/adaptation, and Montgomery data for held-out cross-dataset evaluation.
 
-> **📹 [Watch the 2-Minute Demo Video Here](#)** *(Replace this with your YouTube/Loom link!)*
+> **Research prototype:** This repository is intended for experimentation and academic evaluation, not clinical diagnosis. Federated simulation does not by itself guarantee privacy; encryption and secure aggregation are not implemented here.
 
-A Federated Learning system for detecting Tuberculosis (TB) using self-supervised Masked Autoencoder pre-training and FLAME-inspired adaptation on sparse Shenzhen labels.
+## Project highlights
 
----
+- **Federated self-supervised training:** Simulates training across multiple hospital partitions without pooling the raw training images into one central dataset.
+- **Masked Autoencoder (MAE):** Learns image representations by reconstructing masked image patches.
+- **FLAME-inspired / prototype-based few-shot adaptation:** Uses Shenzhen support examples to form class prototypes for Normal and TB classification.
+- **Non-IID data support:** Hospital partitions can use the configured split strategy and concentration parameter.
+- **Evaluation and dashboard:** Includes experiment logs/metrics and a React + FastAPI interface for viewing recorded training metrics and running inference when the required data and model artifacts are available.
 
-## 💻 Platform Showcase
+## Datasets
 
-*(Once you take screenshots of your UI, save them in the `docs/images/` folder so they appear here!)*
+Download the datasets separately; raw images are not included in this repository. Configure their paths in the YAML configuration used for your run.
 
-### Real-Time Training Dashboard
-Monitor global loss convergence across the configured federated hospitals and track live medical metrics (Sensitivity, Specificity, F1) seamlessly.
-![Dashboard UI](docs/images/dashboard.png)
+| Dataset | Role |
+| --- | --- |
+| NIH ChestX-ray14 | Self-supervised representation learning across simulated hospital partitions |
+| Shenzhen TB | Few-shot support/adaptation and query evaluation |
+| Montgomery TB | Held-out cross-dataset evaluation |
 
-### Live TB Analysis & Inference
-Upload unlabelled X-rays for instant diagnostic inference powered by our fine-tuned Prototypical Network, displaying absolute confidence scores.
-![TB Analysis UI](docs/images/analysis.png)
+See [Project Documentation](docs/PROJECT_DOCUMENTATION.md) for the expected data layout and project details.
 
-### Animated Federated Simulation
-Visualize the Privacy-First FedProx protocol in action. Zero raw patient images leave the hospital boundaries; Stage 1 shares model weights only. Encryption and secure aggregation are not implemented by this repository.
-![Federated Map UI](docs/images/federated.png)
+## Getting started
 
-### System Architecture
-A deep dive into the engineering constraints, hardware optimization (RTX 2050), and mathematical frameworks driving the AI.
-![Requirements UI](docs/images/requirements.png)
+### 1. Clone and install
 
----
-
-## 🌟 Architectural Highlights
-- **Federated Learning (FedProx)**: Model training across the configured simulated hospitals using quantity-skewed NIH partitions. Utilizes FedProx to handle the extreme non-IID (unbalanced) data distributions common in real-world clinics.
-- **Vision Transformer (ViT-Tiny)**: Replaced legacy CNNs with a state-of-the-art Transformer backbone. The architecture ensures the federated simulation runs extremely efficiently on consumer-grade GPUs (e.g., RTX 2050 4GB).
-- **Masked Autoencoder (MAE)**: Self-supervised learning from unlabeled X-rays. The model learns fundamental human anatomy by reconstructing masked patches of chest scans.
-- **Few-Shot TB Detection**: A projection MLP maps encoder features into prototype space; class prototypes are means of exactly `k` Shenzhen Normal and `k` Shenzhen TB support samples.
-- **Live Dashboard**: A fully interactive React/FastAPI dashboard to monitor training and perform real-time TB inference.
-
-## 📊 Datasets (Massive Scale)
-This project utilizes a subset of three major chest X-ray datasets. Note that due to their large size, the raw images are excluded from Git tracking.
-
-| Dataset | Purpose | Images Used | Split Strategy |
-| :--- | :--- | :--- | :--- |
-| **NIH ChestX-ray14** | Federated SSL representation learning (unlabeled) | Configured limit | Configured split |
-| **Shenzhen TB** | K-shot support/adaptation and query evaluation | Dataset-dependent | Deterministic seeded sampling |
-| **Montgomery TB** | Held-out cross-hospital final evaluation | Dataset-dependent | Never used during adaptation |
-
-> [!IMPORTANT]
-> You must download these datasets manually and place them in the `data/raw/` directory structure as defined in the [Documentation](PROJECT_DOCUMENTATION.md).
-
-## 🚀 Getting Started
-
-### 1. Installation
 ```bash
-# Clone the repository
-git clone https://github.com/Kirangowda0715/Federated-SSL
-cd Federated-SSL
-
-# Install dependencies
+git clone https://github.com/Kirangowda0715/Fed-SSL-TB-Run.git
+cd Fed-SSL-TB-Run
 pip install -r requirements.txt
+```
 
-# For GPU support (NVIDIA)
+For NVIDIA GPU support, install a PyTorch build compatible with your CUDA driver. For example, the PyTorch CUDA 12.1 wheels can be installed with:
+
+```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
-### 2. Prepare Data
-Ensure your data is placed in `data/raw/` and then run the data splitter to simulate the 5 hospitals:
+### 2. Configure the datasets
+
+Place the downloaded datasets in the locations configured in your YAML file. Review the paths and options in `configs/kaggle.yaml` or `configs/default.yaml` before running any commands.
+
+To prepare NIH hospital partitions using the Kaggle configuration:
+
 ```bash
 python -c "from src.utils.config import load_config; from src.datasets.loader import NIHDataset; from src.datasets.splitter import split_nih_to_hospitals; cfg = load_config('configs/kaggle.yaml'); ds = NIHDataset(cfg.data.nih_path, limit=cfg.ssl.limit_samples); split_nih_to_hospitals(ds, num_hospitals=cfg.data.num_hospitals, strategy=cfg.data.split_strategy, alpha=cfg.data.split_alpha, save_dir=cfg.data.processed_dir, seed=cfg.finetuning.seed)"
 ```
 
-### 3. Federated Training
-To start the simulation:
+### 3. Run federated training
+
+For a standard configured run:
+
 ```bash
 python src/federated/simulation.py --config configs/default.yaml
 ```
 
-On a Kaggle notebook with two visible GPUs, enable per-hospital parallel training:
+For a Kaggle environment where two GPUs are visible, the repository supports the parallel option:
+
 ```bash
-!python src/federated/simulation.py --config configs/kaggle.yaml --parallel
+python src/federated/simulation.py --config configs/kaggle.yaml --parallel
 ```
-The simulation assigns at most one concurrent hospital worker to each visible GPU
-and prints the device assignment at startup and for each hospital.
 
-The default few-shot setting is 5-shot per class, meaning 5 Normal plus 5 TB
-support images. Remaining Shenzhen images are adaptation/query-training data;
-Montgomery is reserved for final evaluation. The encoder is trainable by
-default and the projection dimension is configured in `finetuning`.
+Check your selected configuration before starting: it determines dataset paths, hospital count, partition strategy, training settings, and few-shot parameters. The default few-shot setting described by the project is 5-shot per class (five Normal and five TB support images); verify the active configuration for the run you are reproducing.
 
-### 4. Start the Live Dashboard
-In separate terminal windows, start the backend and frontend:
+## Run the dashboard
+
+Start the backend in one terminal:
+
 ```bash
-# Terminal 2 (Backend)
 python src/web/api.py
+```
 
-# Terminal 3 (Frontend)
+Start the frontend in another terminal:
+
+```bash
 cd src/web/frontend
+npm install
 npm run dev
 ```
-Navigate to `http://localhost:3000` to interact with the federated metrics.
 
-### Frontend API contract
+Open `http://localhost:3000` in your browser. The frontend uses `VITE_API_URL`, which defaults to `http://localhost:8000`.
 
-The frontend reads `VITE_API_URL` (default `http://localhost:8000`) through one
-API service. The FastAPI service exposes:
+### API overview
 
-- `GET /metrics` — the persisted round log, including `mean_mae_loss`,
-  `mean_proto_loss`, `mean_total_loss`, hospital losses, sample counts, and any
-  recorded `eval_metrics`.
-- `GET /status` — observable state derived from the log and active config,
-  including completed/total rounds, configured hospitals, aggregation strategy,
-  and checkpoint availability. An incomplete log is reported as `IDLE`; it is
-  not presented as live `RUNNING` without a process signal.
+- `GET /metrics` — recorded training-round metrics and any evaluation metrics present in the log.
+- `GET /status` — status derived from the available log and configuration.
 - `GET /metadata` — model, few-shot, and filesystem-derived dataset metadata.
-- `POST /predict` — multipart field `file`; returns `prediction`,
-  `confidence`, `tb_probability`, and `normal_probability` when inference is
-  available.
+- `POST /predict` — accepts an uploaded image in the multipart `file` field and returns prediction/confidence fields when the required model and data are available.
 
-Shenzhen is the few-shot adaptation/support dataset and Montgomery is the
-held-out final evaluation dataset. “5-shot per class” means five Normal plus
-five TB support images.
+The dashboard displays recorded information; it should not be interpreted as evidence that a training process is currently running unless a live process is actually active.
 
-## 📖 Learn More
-For a deep dive into the architecture, federated strategies, and physics of the model, see:
-👉 **[PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**
+## Experiment records
+
+Experiment logs and metric files are organized under `experiments/`. Check the specific experiment folder and its configuration before comparing results. Training loss is not the same as classification accuracy, AUC, sensitivity, or specificity; use the relevant Stage 2 evaluation metrics for classification claims. Do not treat missing evaluation output as a measured result.
+
+Model checkpoint files and datasets may be excluded from Git by `.gitignore`; a clean clone may therefore require you to obtain those artifacts separately.
+
+## Documentation
+
+- [Project documentation](docs/PROJECT_DOCUMENTATION.md)
+- [Project study notes (Word)](docs/Federated_SSL_Project_Study_Notes.docx)
 
 ---
-*Developed as a Major Final Year Project.*
+
+*Academic major-project research prototype.*
