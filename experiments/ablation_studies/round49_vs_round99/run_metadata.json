@@ -1,0 +1,28 @@
+{
+  "experiment": "Round 49 vs Round 99 checkpoint comparison",
+  "created_utc": "2026-10-10T16:15:47.102719+00:00",
+  "protocol": {
+    "few_shot_k_per_class": 20,
+    "seed": 42,
+    "encoder_frozen": true,
+    "projection_dim": 128,
+    "finetuning_epochs": 100,
+    "batch_size": 4
+  },
+  "checkpoints": {
+    "round49": {
+      "path": "experiments\\main_experiment\\checkpoints\\flame_round_049.pt",
+      "sha256": "ebc91a7473109c44b68b9e45f827c590333159d8cd9a49b4b62ffa91af75e20a"
+    },
+    "round99": {
+      "path": "experiments\\main_experiment\\checkpoints\\flame_round_099.pt",
+      "sha256": "350a05da531eba963e0d282bc95a3e6e76a91341280b058138979fe6b1cb4c30"
+    }
+  },
+  "git": {
+    "branch": "dev",
+    "commit": "5e11b68e440905053f1e2f3bcdbb1e2ad50fd562",
+    "working_tree_status": "?? configs/local_stage2.yaml\n?? experiments/ablation_studies/\n?? experiments/main_experiment/metrics/round49_vs_round99_k20_comparison.json\n?? experiments/main_experiment/metrics/shenzhen_repeat_k20_round099.json\n?? experiments/main_experiment/metrics/stage2_k20_round049_controlled.json\n?? experiments/main_experiment/metrics/stage2_k20_round099.json\n?? experiments/main_experiment/metrics/stage2_k20_round099_controlled.json\n?? run_checkpoint_comparison.py\n?? run_shenzhen_test.py\n?? run_stage2_local.py"
+  },
+  "support_samples_match": true
+}

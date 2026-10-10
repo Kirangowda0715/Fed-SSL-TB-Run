@@ -1,0 +1,44 @@
+data:
+  nih_path: data/raw/NIH
+  shenzhen_path: data/raw/Shenzhen
+  montgomery_path: data/raw/Montgomery
+  processed_dir: data/processed
+  image_size: 224
+  num_hospitals: 10
+  split_strategy: non_iid
+  split_alpha: 1.0
+model:
+  backbone: vit_tiny
+  embed_dim: 192
+  mask_ratio: 0.8
+  decoder_depth: 4
+ssl:
+  epochs_per_round: 1
+  batch_size: 4
+  lr: 0.001
+  limit_samples: 500
+  optimizer: adamw
+federated:
+  rounds: 30
+  aggregation: fedprox
+  fedprox_mu: 0.01
+finetuning:
+  few_shot_k: 20
+  projection_dim: 128
+  epochs: 100
+  lr: 0.001
+  freeze_encoder: false
+  seed: 42
+  support_sampling: random_stratified
+evaluation:
+  test_set: montgomery
+  metrics:
+  - auc
+  - accuracy
+  - sensitivity
+  - specificity
+  - f1
+  - balanced_accuracy
+logging:
+  log_dir: experiments/main_experiment/logs
+  checkpoint_dir: experiments/stage2_round099_checkpoint
