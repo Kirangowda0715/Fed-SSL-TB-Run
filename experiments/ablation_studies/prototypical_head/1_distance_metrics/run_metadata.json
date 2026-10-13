@@ -1,0 +1,11 @@
+{
+  "suite": "distance_metrics",
+  "timestamp": "2026-10-13T22:33:33.385413",
+  "git_commit": "a8d324495847558e78da88700993e2f250970a32",
+  "checkpoint": "experiments\\main_experiment\\checkpoints\\flame_round_099.pt",
+  "seed": 42,
+  "torch_version": "2.5.1+cu121",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "cuda_available": true,
+  "device_name": "NVIDIA GeForce RTX 2050"
+}

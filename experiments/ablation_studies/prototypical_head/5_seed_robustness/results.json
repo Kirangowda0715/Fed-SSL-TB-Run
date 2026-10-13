@@ -1,0 +1,201 @@
+{
+  "episodes": [
+    {
+      "seed": 42,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "seed": 101,
+      "shenzhen": {
+        "auc": 0.7126458178207992,
+        "accuracy": 0.6672025723472669,
+        "sensitivity": 0.689873417721519,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6780715396578538,
+        "balanced_accuracy": 0.6668321336973608
+      },
+      "montgomery": {
+        "auc": 0.5450431034482759,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "seed": 202,
+      "shenzhen": {
+        "auc": 0.748004053942252,
+        "accuracy": 0.6929260450160771,
+        "sensitivity": 0.6044303797468354,
+        "specificity": 0.7843137254901961,
+        "f1": 0.6666666666666666,
+        "balanced_accuracy": 0.6943720526185158
+      },
+      "montgomery": {
+        "auc": 0.5853448275862069,
+        "accuracy": 0.463768115942029,
+        "sensitivity": 0.8620689655172413,
+        "specificity": 0.175,
+        "f1": 0.5747126436781609,
+        "balanced_accuracy": 0.5185344827586207
+      }
+    },
+    {
+      "seed": 303,
+      "shenzhen": {
+        "auc": 0.689144328617523,
+        "accuracy": 0.6511254019292605,
+        "sensitivity": 0.5949367088607594,
+        "specificity": 0.7091503267973857,
+        "f1": 0.6340640809443507,
+        "balanced_accuracy": 0.6520435178290725
+      },
+      "montgomery": {
+        "auc": 0.531896551724138,
+        "accuracy": 0.43478260869565216,
+        "sensitivity": 0.9655172413793104,
+        "specificity": 0.05,
+        "f1": 0.5894736842105263,
+        "balanced_accuracy": 0.5077586206896552
+      }
+    },
+    {
+      "seed": 404,
+      "shenzhen": {
+        "auc": 0.679810953917432,
+        "accuracy": 0.6672025723472669,
+        "sensitivity": 0.7056962025316456,
+        "specificity": 0.6274509803921569,
+        "f1": 0.6830015313935681,
+        "balanced_accuracy": 0.6665735914619012
+      },
+      "montgomery": {
+        "auc": 0.5219827586206897,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "seed": 505,
+      "shenzhen": {
+        "auc": 0.5095246959543311,
+        "accuracy": 0.5128617363344051,
+        "sensitivity": 0.49050632911392406,
+        "specificity": 0.5359477124183006,
+        "f1": 0.5057096247960848,
+        "balanced_accuracy": 0.5132270207661124
+      },
+      "montgomery": {
+        "auc": 0.5043103448275862,
+        "accuracy": 0.572463768115942,
+        "sensitivity": 0.05172413793103448,
+        "specificity": 0.95,
+        "f1": 0.09230769230769231,
+        "balanced_accuracy": 0.5008620689655172
+      }
+    },
+    {
+      "seed": 606,
+      "shenzhen": {
+        "auc": 0.6794800198560437,
+        "accuracy": 0.6736334405144695,
+        "sensitivity": 0.6993670886075949,
+        "specificity": 0.6470588235294118,
+        "f1": 0.6852713178294574,
+        "balanced_accuracy": 0.6732129560685034
+      },
+      "montgomery": {
+        "auc": 0.5170258620689655,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625
+      }
+    },
+    {
+      "seed": 707,
+      "shenzhen": {
+        "auc": 0.6934206171920245,
+        "accuracy": 0.6881028938906752,
+        "sensitivity": 0.689873417721519,
+        "specificity": 0.6862745098039216,
+        "f1": 0.692063492063492,
+        "balanced_accuracy": 0.6880739637627202
+      },
+      "montgomery": {
+        "auc": 0.5262931034482758,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5
+      }
+    },
+    {
+      "seed": 808,
+      "shenzhen": {
+        "auc": 0.6945116654256639,
+        "accuracy": 0.6864951768488746,
+        "sensitivity": 0.6867088607594937,
+        "specificity": 0.6862745098039216,
+        "f1": 0.6899841017488076,
+        "balanced_accuracy": 0.6864916852817076
+      },
+      "montgomery": {
+        "auc": 0.5249999999999999,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "seed": 909,
+      "shenzhen": {
+        "auc": 0.7059857698353603,
+        "accuracy": 0.6463022508038585,
+        "sensitivity": 0.7468354430379747,
+        "specificity": 0.5424836601307189,
+        "f1": 0.6820809248554913,
+        "balanced_accuracy": 0.6446595515843467
+      },
+      "montgomery": {
+        "auc": 0.5818965517241379,
+        "accuracy": 0.5652173913043478,
+        "sensitivity": 0.3620689655172414,
+        "specificity": 0.7125,
+        "f1": 0.4117647058823529,
+        "balanced_accuracy": 0.5372844827586207
+      }
+    }
+  ],
+  "summary": {
+    "shenzhen_auc": "67.89 +- 5.99%",
+    "shenzhen_accuracy": "65.43 +- 4.95%",
+    "shenzhen_sensitivity": "65.79 +- 7.06%",
+    "montgomery_auc": "53.69 +- 2.54%",
+    "montgomery_sensitivity": "81.72 +- 31.52%"
+  }
+}
