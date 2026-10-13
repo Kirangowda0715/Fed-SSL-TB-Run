@@ -15,6 +15,7 @@ Execution shortcuts and command documentation: [`COMMANDS.md`](COMMANDS.md) | Wi
 | [`3_prototype_aggregation/`](3_prototype_aggregation/) | Arithmetic Mean vs. Coordinate Median Centroid | [**`3_prototype_aggregation/results.md`**](3_prototype_aggregation/results.md) | **Coordinate Median (68.01% AUC)** beats Mean (67.62% AUC), demonstrating outlier resilience. |
 | [`4_k_shot_scaling/`](4_k_shot_scaling/) | Support Set Shot Sweep ($K \in [3, 5, 10, 15, 20, 30]$) | [**`4_k_shot_scaling/results.md`**](4_k_shot_scaling/results.md) | Peak unadapted sample efficiency occurs at **$K=10$ (71.35% AUC, 79.75% Sensitivity)**. |
 | [`5_seed_robustness/`](5_seed_robustness/) | 10-Episode Monte Carlo Sampling (10 random seeds) | [**`5_seed_robustness/results.md`**](5_seed_robustness/results.md) | **$67.89 \pm 5.99\%$ AUC** on Shenzhen across 10 independent random sampling episodes. |
+| [`6_training_epochs/`](6_training_epochs/) | Adaptation Training Epochs ($E \in \{0, 10, 25, 50, 75, 100, 150, 200\}$) | [**`6_training_epochs/results.md`**](6_training_epochs/results.md) | **Peak ROC-AUC reaches 84.70% at 50 Epochs** (+15.77% gain); beyond 100 epochs, head overfits. |
 
 ---
 

@@ -1,0 +1,156 @@
+{
+  "epoch_progression": [
+    {
+      "epochs": 0,
+      "shenzhen": {
+        "auc": 0.6892942831140895,
+        "accuracy": 0.6655948553054662,
+        "sensitivity": 0.6835443037974683,
+        "specificity": 0.6470588235294118,
+        "f1": 0.675,
+        "balanced_accuracy": 0.6653015636634401
+      },
+      "montgomery": {
+        "auc": 0.5420258620689655,
+        "accuracy": 0.41304347826086957,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0,
+        "f1": 0.5846153846153846,
+        "balanced_accuracy": 0.49137931034482757
+      }
+    },
+    {
+      "epochs": 10,
+      "shenzhen": {
+        "auc": 0.7137110118308927,
+        "accuracy": 0.6720257234726688,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.673202614379085,
+        "f1": 0.6751592356687898,
+        "balanced_accuracy": 0.6720443451642261
+      },
+      "montgomery": {
+        "auc": 0.5717672413793105,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5
+      }
+    },
+    {
+      "epochs": 25,
+      "shenzhen": {
+        "auc": 0.7857408786299331,
+        "accuracy": 0.7218649517684887,
+        "sensitivity": 0.7151898734177216,
+        "specificity": 0.7287581699346405,
+        "f1": 0.7232,
+        "balanced_accuracy": 0.721974021676181
+      },
+      "montgomery": {
+        "auc": 0.5797413793103449,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5
+      }
+    },
+    {
+      "epochs": 50,
+      "shenzhen": {
+        "auc": 0.8470050467444363,
+        "accuracy": 0.77491961414791,
+        "sensitivity": 0.740506329113924,
+        "specificity": 0.8104575163398693,
+        "f1": 0.7697368421052632,
+        "balanced_accuracy": 0.7754819227268966
+      },
+      "montgomery": {
+        "auc": 0.5586206896551724,
+        "accuracy": 0.5144927536231884,
+        "sensitivity": 0.7931034482758621,
+        "specificity": 0.3125,
+        "f1": 0.5786163522012578,
+        "balanced_accuracy": 0.552801724137931
+      }
+    },
+    {
+      "epochs": 75,
+      "shenzhen": {
+        "auc": 0.8403863655166709,
+        "accuracy": 0.792604501607717,
+        "sensitivity": 0.7563291139240507,
+        "specificity": 0.8300653594771242,
+        "f1": 0.7874794069192751,
+        "balanced_accuracy": 0.7931972367005875
+      },
+      "montgomery": {
+        "auc": 0.5426724137931035,
+        "accuracy": 0.5,
+        "sensitivity": 0.5,
+        "specificity": 0.5,
+        "f1": 0.4566929133858268,
+        "balanced_accuracy": 0.5
+      }
+    },
+    {
+      "epochs": 100,
+      "shenzhen": {
+        "auc": 0.812577562670638,
+        "accuracy": 0.77491961414791,
+        "sensitivity": 0.7848101265822784,
+        "specificity": 0.7647058823529411,
+        "f1": 0.779874213836478,
+        "balanced_accuracy": 0.7747580044676098
+      },
+      "montgomery": {
+        "auc": 0.5129310344827587,
+        "accuracy": 0.4782608695652174,
+        "sensitivity": 0.603448275862069,
+        "specificity": 0.3875,
+        "f1": 0.49295774647887325,
+        "balanced_accuracy": 0.49547413793103445
+      }
+    },
+    {
+      "epochs": 150,
+      "shenzhen": {
+        "auc": 0.7993867378174899,
+        "accuracy": 0.747588424437299,
+        "sensitivity": 0.7120253164556962,
+        "specificity": 0.7843137254901961,
+        "f1": 0.7413509060955519,
+        "balanced_accuracy": 0.7481695209729462
+      },
+      "montgomery": {
+        "auc": 0.487823275862069,
+        "accuracy": 0.4927536231884058,
+        "sensitivity": 0.8275862068965517,
+        "specificity": 0.25,
+        "f1": 0.5783132530120482,
+        "balanced_accuracy": 0.5387931034482758
+      }
+    },
+    {
+      "epochs": 200,
+      "shenzhen": {
+        "auc": 0.7974114751385788,
+        "accuracy": 0.729903536977492,
+        "sensitivity": 0.7278481012658228,
+        "specificity": 0.7320261437908496,
+        "f1": 0.732484076433121,
+        "balanced_accuracy": 0.7299371225283362
+      },
+      "montgomery": {
+        "auc": 0.47769396551724136,
+        "accuracy": 0.47101449275362317,
+        "sensitivity": 0.6551724137931034,
+        "specificity": 0.3375,
+        "f1": 0.5100671140939598,
+        "balanced_accuracy": 0.4963362068965517
+      }
+    }
+  ]
+}

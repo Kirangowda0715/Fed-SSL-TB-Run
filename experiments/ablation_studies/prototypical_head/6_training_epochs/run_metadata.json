@@ -1,0 +1,11 @@
+{
+  "suite": "training_epochs",
+  "timestamp": "2026-10-13T23:09:26.490869",
+  "git_commit": "22728dd07c91236df8d6ebad8d2b0d9ed4577030",
+  "checkpoint": "experiments\\main_experiment\\checkpoints\\flame_round_099.pt",
+  "seed": 42,
+  "torch_version": "2.5.1+cu121",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "cuda_available": true,
+  "device_name": "NVIDIA GeForce RTX 2050"
+}

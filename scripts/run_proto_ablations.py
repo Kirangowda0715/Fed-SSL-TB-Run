@@ -45,6 +45,7 @@ from src.datasets.loader import (
     get_eval_transform,
 )
 from src.models.encoder import get_encoder
+from src.models.proto_head import PrototypicalHead
 from src.utils.config import load_config
 from src.utils.metrics import evaluate
 
@@ -506,11 +507,131 @@ def run_suite_seeds(sh_z, sh_y, mont_z, mont_y, checkpoint_path, k=20, seeds=(42
 
 
 # ==============================================================================
+# Suite 6: Prototypical Adaptation Training Epochs Sweep
+# ==============================================================================
+def train_proto_head_loo(
+    support_z: torch.Tensor,
+    support_y: torch.Tensor,
+    epochs: int,
+    lr: float = 0.001,
+    projection_dim: int = 128,
+    seed: int = 42,
+    device: torch.device = torch.device("cpu"),
+) -> nn.Module:
+    torch.manual_seed(seed)
+    embed_dim = support_z.shape[-1]
+    head = PrototypicalHead(embed_dim=embed_dim, num_classes=2, projection_dim=projection_dim).to(device)
+    if epochs == 0:
+        return head
+
+    optimizer = torch.optim.AdamW(head.parameters(), lr=lr, weight_decay=1e-4)
+    support_z = support_z.to(device)
+    support_y = support_y.to(device)
+    n_supp = len(support_y)
+
+    head.train()
+    for _ in range(epochs):
+        losses = []
+        for i in range(n_supp):
+            mask = torch.ones(n_supp, dtype=torch.bool, device=device)
+            mask[i] = False
+            p = head.get_learnable_prototypes(support_z[mask], support_y[mask])
+            l, _ = head.prototypical_loss(support_z[i:i+1], support_y[i:i+1], p)
+            losses.append(l)
+        loss = torch.stack(losses).mean()
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
+        optimizer.step()
+    head.eval()
+    return head
+
+
+def evaluate_with_head(
+    head: nn.Module,
+    support_z: torch.Tensor,
+    support_y: torch.Tensor,
+    query_z: torch.Tensor,
+    query_y: torch.Tensor,
+    device: torch.device = torch.device("cpu"),
+) -> Dict[str, float]:
+    head.eval().to(device)
+    support_z, support_y = support_z.to(device), support_y.to(device)
+    query_z = query_z.to(device)
+    with torch.no_grad():
+        p = head.compute_prototypes(support_z, support_y)
+        probs = F.softmax(head.forward(query_z, p), dim=-1)[:, 1].cpu().numpy()
+    eval_out = evaluate(query_y.numpy(), probs)
+    return {
+        "auc": float(eval_out["auc"]),
+        "accuracy": float(eval_out["accuracy"]),
+        "sensitivity": float(eval_out["sensitivity"]),
+        "specificity": float(eval_out["specificity"]),
+        "f1": float(eval_out["f1"]),
+        "balanced_accuracy": float(eval_out["balanced_accuracy"]),
+    }
+
+
+def run_suite_epochs(
+    sh_z, sh_y, mont_z, mont_y, checkpoint_path,
+    epochs_list=(0, 10, 25, 50, 75, 100, 150, 200),
+    k=20, seed=42, lr=0.001, device="cpu"
+):
+    out_dir = BASE_DIR / "6_training_epochs"
+    print("\n" + "="*75)
+    print("RUNNING ABLATION: 6. Prototypical Adaptation Training Epochs Sweep")
+    print(f"Target Directory: {out_dir}")
+    print("="*75)
+
+    supp_idx, query_idx = sample_kshot(sh_y, k=k, seed=seed)
+    s_z, s_y = sh_z[supp_idx], sh_y[supp_idx]
+    q_z, q_y = sh_z[query_idx], sh_y[query_idx]
+
+    records = []
+    md_lines = [
+        "# Ablation Study 6: Prototypical Adaptation Training Epochs Sweep",
+        f"- **Checkpoint**: `{checkpoint_path}`",
+        f"- **Few-Shot Shots ($K$)**: `{k}` per class",
+        f"- **Learning Rate**: `{lr}` (AdamW)",
+        f"- **Random Seed**: `{seed}`\n",
+        "| Epochs | Shenzhen ROC-AUC | Shenzhen Accuracy | Shenzhen Sensitivity | Shenzhen Specificity | Montgomery ROC-AUC | Montgomery Sensitivity |",
+        "| :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
+    ]
+
+    print(f"{'Epochs':<10} | {'Shenzhen AUC':<12} | {'Shenzhen Acc':<12} | {'Shenzhen Sens':<12} | {'Mont. AUC':<10}")
+    print("-" * 65)
+
+    for ep in epochs_list:
+        head = train_proto_head_loo(s_z, s_y, epochs=ep, lr=lr, seed=seed, device=device)
+        sh_res = evaluate_with_head(head, s_z, s_y, q_z, q_y, device=device)
+        mont_res = evaluate_with_head(head, s_z, s_y, mont_z, mont_y, device=device)
+
+        records.append({
+            "epochs": ep,
+            "shenzhen": sh_res,
+            "montgomery": mont_res,
+        })
+
+        print(f"Epochs {ep:<4} | {sh_res['auc']*100:>10.2f}% | {sh_res['accuracy']*100:>10.2f}% | {sh_res['sensitivity']*100:>10.2f}% | {mont_res['auc']*100:>8.2f}%")
+        md_lines.append(f"| **{ep}** | {sh_res['auc']*100:.2f}% | {sh_res['accuracy']*100:.2f}% | {sh_res['sensitivity']*100:.2f}% | {sh_res['specificity']*100:.2f}% | {mont_res['auc']*100:.2f}% | {mont_res['sensitivity']*100:.2f}% |")
+
+    save_reproducibility_artifacts(
+        out_dir=out_dir,
+        suite_name="training_epochs",
+        results_data={"epoch_progression": records},
+        support_indices={"k": k, "seed": seed, "support_indices": supp_idx.tolist()},
+        checkpoint_path=checkpoint_path,
+        seed=seed,
+        summary_markdown="\n".join(md_lines),
+    )
+
+
+# ==============================================================================
 # Driver
 # ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="Prototypical Head Reproducible Ablation Runner")
-    parser.add_argument("--suite", choices=["distance", "architecture", "aggregation", "kshot", "seeds", "all"], default="distance",
+    parser.add_argument("--suite", choices=["distance", "architecture", "aggregation", "kshot", "seeds", "epochs", "all"], default="distance",
                         help="Which ablation suite to execute (default: distance)")
     parser.add_argument("--config", default="configs/local_stage2.yaml")
     parser.add_argument("--checkpoint", default="experiments/main_experiment/checkpoints/flame_round_099.pt")
@@ -566,6 +687,9 @@ def main():
 
     if args.suite in ("seeds", "all"):
         run_suite_seeds(sh_z, sh_y, mont_z, mont_y, str(ckpt_path), k=args.k, device=device)
+
+    if args.suite in ("epochs", "all"):
+        run_suite_epochs(sh_z, sh_y, mont_z, mont_y, str(ckpt_path), k=args.k, seed=args.seed, device=device)
 
     print("\n" + "="*75)
     print("[COMPLETED] All requested ablations executed and saved!")

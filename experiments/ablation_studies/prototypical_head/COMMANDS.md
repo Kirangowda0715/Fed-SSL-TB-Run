@@ -68,11 +68,20 @@ python scripts/run_proto_ablations.py --suite seeds --k 20
 
 ---
 
+### Suite 6: Prototypical Adaptation Training Epochs Sweep
+Evaluates adaptation training progression across $E \in \{0, 10, 25, 50, 75, 100, 150, 200\}$ epochs:
+```bash
+python scripts/run_proto_ablations.py --suite epochs --k 20 --seed 42
+```
+*Outputs saved to*: [`6_training_epochs/`](6_training_epochs/)
+
+---
+
 ## ⚙️ Custom Execution Flags
 
 | Flag | Default | Description | Example Usage |
 | :--- | :--- | :--- | :--- |
-| `--suite` | `distance` | Which suite to execute (`distance`, `architecture`, `aggregation`, `kshot`, `seeds`, `all`) | `--suite distance` |
+| `--suite` | `distance` | Which suite to execute (`distance`, `architecture`, `aggregation`, `kshot`, `seeds`, `epochs`, `all`) | `--suite epochs` |
 | `--checkpoint` | `flame_round_099.pt` | Path to the federated encoder checkpoint | `--checkpoint experiments/ablation_30_round/checkpoints/flame_round_029.pt` |
 | `--k` | `20` | Few-shot support shots per class ($K$) | `--k 10` |
 | `--seed` | `42` | Random seed for support set sampling | `--seed 101` |
