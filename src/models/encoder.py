@@ -1,7 +1,7 @@
 """
 src/models/encoder.py
 ---------------------
-Encoder backbone factory: ResNet50 or ViT-Small.
+Encoder backbone factory: ViT-Tiny, ViT-Small, or ResNet50.
 
 The encoder is federated together with the MAE decoder during Stage 1.
 The prototype head remains local.
@@ -62,7 +62,7 @@ class ResNet50Encoder(nn.Module):
 class ViTSmallEncoder(nn.Module):
     """
     ViT-Small (patch16, 224) from timm.
-    Head replaced with Linear(384 → embed_dim).
+    Head replaced with Linear(384 → embed_dim), with mean-pooled patch tokens.
     """
 
     def __init__(self, embed_dim: int = 512):
@@ -88,19 +88,25 @@ class ViTSmallEncoder(nn.Module):
         Args:
             x : (B, C, H, W) image tensor (must be 224×224 for vit_small_patch16_224)
         Returns:
-            z : (B, embed_dim) embedding
+            z : (B, embed_dim) mean-pooled patch embedding
         """
-        feat = self.vit(x)             # (B, 384) — CLS token representation
-        z = self.projection(feat)      # (B, embed_dim)
+        tokens = self.vit.patch_embed(x)
+        tokens = tokens + self.vit.pos_embed[:, 1:, :]
+        tokens = self.vit.pos_drop(tokens)
+        for block in self.vit.blocks:
+            tokens = block(tokens)
+        tokens = self.vit.norm(tokens)
+        pooled = tokens.mean(dim=1)
+        z = self.projection(pooled)
         return z
 
 
-# ─── ViT-Tiny Encoder (Primary Lightweight Backbone) ─────────────────────────
+# ─── ViT-Tiny Encoder (Lightweight Baseline) ─────────────────────────────────
 
 class ViTTinyEncoder(nn.Module):
     """
     ViT-Tiny (patch16, 224) from timm.
-    Primary lightweight backbone for privacy-preserving FedSSL TB detection.
+    Lightweight baseline backbone for privacy-preserving FedSSL TB detection.
     
     Dimensions:
         - Input  : (B, 3, 224, 224)
@@ -155,11 +161,20 @@ class ViTTinyEncoder(nn.Module):
 
 def get_encoder(backbone: str = "vit_tiny", embed_dim: int = 192) -> nn.Module:
     """
-    Create and return the ViT-Tiny encoder backbone.
+    Create an encoder for the requested backbone.
 
     Args:
-        backbone  : 'vit_tiny' (recommended lightweight backbone)
-        embed_dim : Output embedding dimensionality (default 192)
+        backbone  : 'vit_tiny', 'vit_small', or 'resnet50'
+        embed_dim : Output embedding dimensionality
     """
-    return ViTTinyEncoder(embed_dim=embed_dim)
+    backbone = backbone.lower()
+    if backbone == "vit_tiny":
+        return ViTTinyEncoder(embed_dim=embed_dim)
+    if backbone == "vit_small":
+        return ViTSmallEncoder(embed_dim=embed_dim)
+    if backbone == "resnet50":
+        return ResNet50Encoder(embed_dim=embed_dim)
+    raise ValueError(
+        f"Unknown backbone '{backbone}'. Choose 'vit_tiny', 'vit_small', or 'resnet50'."
+    )
 

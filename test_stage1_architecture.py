@@ -1,10 +1,13 @@
 """Unit tests verifying Stage 1 pure SSL federated contracts."""
+import tempfile
 import unittest
+from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.utils.config import load_config
 from src.models.mae import build_mae
+from src.models.encoder import get_encoder, ViTSmallEncoder, ViTTinyEncoder
 from src.client.ssl_train import ssl_local_train, _fedprox_penalty
 from src.server.server import FederatedServer
 from src.server.aggregator import fedavg, fedprox
@@ -16,9 +19,85 @@ class Stage1ArchitectureTests(unittest.TestCase):
     def setUpClass(cls):
         cls.config = load_config("configs/default.yaml")
 
+    def test_encoder_factory_supports_tiny_and_small_widths(self):
+        tiny = get_encoder("vit_tiny", embed_dim=192)
+        small_192 = get_encoder("vit_small", embed_dim=192)
+        small_384 = get_encoder("vit_small", embed_dim=384)
+
+        self.assertIsInstance(tiny, ViTTinyEncoder)
+        self.assertIsInstance(small_192, ViTSmallEncoder)
+        self.assertIsInstance(small_384, ViTSmallEncoder)
+        self.assertEqual(small_192.feature_dim, 384)
+        self.assertEqual(small_192.projection.out_features, 192)
+        self.assertEqual(small_384.projection.out_features, 384)
+        with self.assertRaisesRegex(ValueError, "Unknown backbone"):
+            get_encoder("unknown")
+
+    def test_vit_small_384_mae_forward(self):
+        model = build_mae(
+            backbone="vit_small",
+            embed_dim=384,
+            mask_ratio=0.8,
+            decoder_depth=1,
+        )
+        images = torch.randn(1, 3, 224, 224)
+        loss, pred, mask = model(images)
+
+        self.assertTrue(torch.isfinite(loss))
+        self.assertEqual(pred.shape, (1, 196, 16 * 16 * 3))
+        self.assertEqual(mask.shape, (1, 196))
+        self.assertEqual(model.get_embedding(images).shape, (1, 384))
+
+    def test_checkpoint_rejects_incompatible_model_config(self):
+        server = FederatedServer(self.config)
+        server.global_model = object()
+        incompatible_configs = (
+            {"backbone": "vit_tiny", "embed_dim": 192},
+            {"backbone": "vit_small", "embed_dim": 384},
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "incompatible.pt"
+            for saved_config in incompatible_configs:
+                torch.save({"config": saved_config}, path)
+                with self.subTest(saved_config=saved_config):
+                    with self.assertRaisesRegex(ValueError, "does not match"):
+                        server.load_checkpoint(str(path))
+
+    def test_small_checkpoint_round_trip(self):
+        class CheckpointModel:
+            def __init__(self):
+                self.encoder = torch.nn.Linear(2, 2)
+                self.decoder = torch.nn.Linear(2, 2)
+                self.proto_head = torch.nn.Linear(2, 2)
+
+            def load_federated_weights(self, state):
+                self.encoder.load_state_dict(state["encoder"])
+                self.decoder.load_state_dict(state["decoder"])
+                self.proto_head.load_state_dict(state["proto_head"])
+
+        server = FederatedServer(self.config)
+        server.global_model = CheckpointModel()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server.checkpoint_dir = Path(temp_dir)
+            expected = server.global_model.encoder.weight.detach().clone()
+            checkpoint_path = server.save_checkpoint(12)
+            with torch.no_grad():
+                server.global_model.encoder.weight.add_(1.0)
+
+            self.assertEqual(server.load_checkpoint(checkpoint_path), 12)
+            torch.testing.assert_close(server.global_model.encoder.weight, expected)
+
     def test_stage1_local_train_pure_ssl(self):
         """Verify ssl_local_train produces encoder gradients but leaves proto_head untouched."""
-        model = build_mae(self.config)
+        model = build_mae(
+            backbone=self.config.model.backbone,
+            embed_dim=self.config.model.embed_dim,
+            mask_ratio=self.config.model.mask_ratio,
+            decoder_depth=self.config.model.decoder_depth,
+            image_size=self.config.data.image_size,
+            projection_dim=self.config.finetuning.projection_dim,
+        )
         loader = DataLoader(
             TensorDataset(torch.randn(4, 3, 224, 224)),
             batch_size=2,
@@ -137,7 +216,14 @@ class Stage1ArchitectureTests(unittest.TestCase):
                 "epoch_losses": [1.0],
                 "ssl_loss": 1.0,
             }
-            dummy_model = build_mae(self.config)
+            dummy_model = build_mae(
+                backbone=self.config.model.backbone,
+                embed_dim=self.config.model.embed_dim,
+                mask_ratio=self.config.model.mask_ratio,
+                decoder_depth=self.config.model.decoder_depth,
+                image_size=self.config.data.image_size,
+                projection_dim=self.config.finetuning.projection_dim,
+            )
             dummy_loader = DataLoader(TensorDataset(torch.randn(2, 3, 224, 224)))
             results = sim._train_sequential(
                 global_model=dummy_model,

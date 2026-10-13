@@ -94,7 +94,7 @@ python-docx>=1.0.0
 
 - `torch` — The entire deep learning framework. Tensors, layers, GPUs.
 - `torchvision` — Pre-built image transforms (resize, crop, normalize).
-- `timm` — Provides the pre-built ViT-Small encoder backbone.
+- `timm` — Provides the pre-built ViT-Tiny and ViT-Small encoder backbones.
 - `Pillow` — Opens `.png` and `.jpg` files from disk.
 - `numpy` — Array operations for metrics (AUC, sensitivity, etc.).
 - `scikit-learn` — `roc_auc_score` and confusion matrix.
@@ -112,9 +112,9 @@ This file controls ALL hyperparameters. You change one number here, and it affec
 
 ```yaml
 model:
-  backbone: resnet50       # Which encoder to use: 'resnet50' or 'vit_small'
-  embed_dim: 512           # Size of the feature vector each image becomes
-  mask_ratio: 0.75         # 75% of patches are hidden during MAE pre-training
+    backbone: vit_small      # Active study backbone; vit_tiny remains a baseline
+    embed_dim: 192           # Projected feature width used by the primary comparison
+    mask_ratio: 0.80         # Fraction of patches hidden during MAE pre-training
   decoder_depth: 4         # How many layers the decoder has
 
 data:

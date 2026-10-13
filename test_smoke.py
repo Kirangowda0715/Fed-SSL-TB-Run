@@ -1,4 +1,4 @@
-"""Smoke test for FedSSL pipeline — verifies ViT-Tiny MAE, FedProx autograd, Prototypical head, and FL loop."""
+"""Smoke test for the configured ViT MAE, FedProx, prototype head, and FL loop."""
 import sys
 import copy
 import torch
@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 print("=" * 60)
-print("FedSSL Smoke Test (ViT-Tiny & FedProx Verification)")
+print("FedSSL Smoke Test (Configured ViT & FedProx Verification)")
 print("=" * 60)
 
 # 1. Config
@@ -21,9 +21,16 @@ from src.utils.metrics import evaluate, format_metrics
 metrics = evaluate(np.array([0, 1, 0, 1]), np.array([0.1, 0.9, 0.2, 0.8]))
 print(f"[OK] Metrics: {format_metrics(metrics)}")
 
-# 3. ViT-Tiny MAE model
+# 3. Configured ViT MAE model
 from src.models.mae import build_mae
-mae = build_mae(backbone="vit_tiny", embed_dim=192, mask_ratio=0.75, decoder_depth=4)
+mae = build_mae(
+    backbone=config.model.backbone,
+    embed_dim=config.model.embed_dim,
+    mask_ratio=config.model.mask_ratio,
+    decoder_depth=config.model.decoder_depth,
+    image_size=config.data.image_size,
+    projection_dim=config.finetuning.projection_dim,
+)
 mae.train()
 x = torch.randn(2, 3, 224, 224)
 loss, pred, mask = mae(x)
@@ -32,7 +39,9 @@ print(f"[OK] MAE forward | loss={loss.item():.4f} | pred={pred.shape} | mask={ma
 # 4. Global Feature Embedding Pool (Mean patch token pooling)
 emb = mae.get_embedding(x)
 print(f"[OK] Feature Embedding Pool (Mean patch tokens) | shape={emb.shape}")
-assert emb.shape == (2, 192), f"Expected embedding shape (2, 192), got {emb.shape}"
+assert emb.shape == (2, config.model.embed_dim), (
+    f"Expected embedding shape (2, {config.model.embed_dim}), got {emb.shape}"
+)
 
 # 5. Encoder weights
 enc_weights = mae.get_encoder_weights()
@@ -93,11 +102,11 @@ print(f"[OK] Server aggregate + global update complete")
 
 # 10. PrototypicalHead Verification
 from src.models.proto_head import PrototypicalHead
-ph = PrototypicalHead(embed_dim=192, num_classes=2)
-supp_emb = torch.randn(10, 192)  # 5-shot per class (2 classes * 5 samples = 10)
+ph = PrototypicalHead(embed_dim=config.model.embed_dim, num_classes=2)
+supp_emb = torch.randn(10, config.model.embed_dim)  # 5-shot per class
 supp_lbl = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 protos = ph.compute_prototypes(supp_emb, supp_lbl)
-query_emb = torch.randn(6, 192)
+query_emb = torch.randn(6, config.model.embed_dim)
 probs = ph.forward(query_emb, protos)
 print(f"[OK] PrototypicalHead | 5-shot prototypes={protos.shape} | query probs={probs.shape}")
 

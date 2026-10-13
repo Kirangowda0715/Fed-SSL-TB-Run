@@ -29,7 +29,7 @@ class MaskedAutoencoder(nn.Module):
     The decoder remains local to each hospital.
 
     Args:
-        encoder       : Encoder nn.Module (ResNet50 or ViT-Small)
+        encoder       : Encoder nn.Module (ViT-Tiny, ViT-Small, or ResNet50)
         decoder       : MAEDecoder nn.Module
         mask_ratio    : Fraction of patches to mask (default 0.75)
         image_size    : Input image size (default 224)
@@ -293,11 +293,11 @@ def build_mae(
     projection_dim: int = 128,
 ) -> MaskedAutoencoder:
     """
-    Build a full MaskedAutoencoder model with ViT-Tiny backbone.
+    Build a full MaskedAutoencoder model with the configured backbone.
 
     Args:
-        backbone      : 'vit_tiny'
-        embed_dim     : Embedding dimensionality (192 for vit_tiny)
+        backbone      : 'vit_tiny', 'vit_small', or 'resnet50'
+        embed_dim     : Output embedding dimensionality
         mask_ratio    : Fraction of patches to mask (default 0.75)
         decoder_depth : Number of Transformer decoder blocks (default 4)
         image_size    : Input image resolution (default 224)

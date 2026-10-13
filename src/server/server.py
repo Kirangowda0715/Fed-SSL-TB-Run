@@ -197,6 +197,21 @@ class FederatedServer:
         """
         assert self.global_model is not None
         ckpt = torch.load(path, map_location=self.device)
+        saved_config = ckpt.get("config", {})
+        saved_backbone = saved_config.get("backbone")
+        saved_embed_dim = saved_config.get("embed_dim")
+        active_backbone = self.config.model.backbone
+        active_embed_dim = self.config.model.embed_dim
+        if saved_backbone is not None and saved_backbone.lower() != active_backbone.lower():
+            raise ValueError(
+                f"Checkpoint backbone '{saved_backbone}' does not match configured "
+                f"backbone '{active_backbone}'."
+            )
+        if saved_embed_dim is not None and int(saved_embed_dim) != int(active_embed_dim):
+            raise ValueError(
+                f"Checkpoint embedding width {saved_embed_dim} does not match "
+                f"configured width {active_embed_dim}."
+            )
         if "decoder_state_dict" in ckpt:
             self.global_model.load_federated_weights({
                 "encoder": ckpt["encoder_state_dict"],
