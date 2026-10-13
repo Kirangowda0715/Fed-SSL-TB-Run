@@ -1,0 +1,36 @@
+{
+  "encoder": "vit_tiny_patch16_224",
+  "pretrained": "ImageNet",
+  "few_shot_k": 5,
+  "seed": 42,
+  "learned_projection": false,
+  "adaptation_epochs": 0,
+  "shenzhen_query_metrics": {
+    "auc": 0.7930278303263028,
+    "accuracy": 0.6595092024539877,
+    "sensitivity": 0.8459214501510574,
+    "specificity": 0.4672897196261682,
+    "f1": 0.7161125319693095,
+    "balanced_accuracy": 0.6566055848886128
+  },
+  "montgomery_metrics": {
+    "auc": 0.5609913793103448,
+    "accuracy": 0.5507246376811594,
+    "sensitivity": 0.41379310344827586,
+    "specificity": 0.65,
+    "f1": 0.43636363636363634,
+    "balanced_accuracy": 0.531896551724138
+  },
+  "support_indices": [
+    12,
+    57,
+    114,
+    125,
+    140,
+    370,
+    378,
+    397,
+    605,
+    628
+  ]
+}
