@@ -77,11 +77,20 @@ python scripts/run_proto_ablations.py --suite epochs --k 20 --seed 42
 
 ---
 
+### Suite 7: Head Hyperparameter Optimization & Multi-Support Ensembling
+Evaluates temperature scaling, learning rate dynamics, and 1/3/5-head support bagging ensembling:
+```bash
+python scripts/run_proto_ablations.py --suite ensembling --k 20 --seed 42
+```
+*Outputs saved to*: [`7_head_optimization_and_ensembling/`](7_head_optimization_and_ensembling/)
+
+---
+
 ## ⚙️ Custom Execution Flags
 
 | Flag | Default | Description | Example Usage |
 | :--- | :--- | :--- | :--- |
-| `--suite` | `distance` | Which suite to execute (`distance`, `architecture`, `aggregation`, `kshot`, `seeds`, `epochs`, `all`) | `--suite epochs` |
+| `--suite` | `distance` | Which suite to execute (`distance`, `architecture`, `aggregation`, `kshot`, `seeds`, `epochs`, `ensembling`, `all`) | `--suite ensembling` |
 | `--checkpoint` | `flame_round_099.pt` | Path to the federated encoder checkpoint | `--checkpoint experiments/ablation_30_round/checkpoints/flame_round_029.pt` |
 | `--k` | `20` | Few-shot support shots per class ($K$) | `--k 10` |
 | `--seed` | `42` | Random seed for support set sampling | `--seed 101` |

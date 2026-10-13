@@ -626,12 +626,200 @@ def run_suite_epochs(
     )
 
 
+def clean_eval(res: dict) -> dict:
+    return {
+        "auc": float(res["auc"]),
+        "accuracy": float(res["accuracy"]),
+        "sensitivity": float(res["sensitivity"]),
+        "specificity": float(res["specificity"]),
+        "f1": float(res["f1"]),
+        "balanced_accuracy": float(res["balanced_accuracy"]),
+    }
+
+
+# ==============================================================================
+# Suite 7: Head Hyperparameter Optimization & Multi-Support Ensembling
+# ==============================================================================
+def run_suite_ensembling(
+    sh_z, sh_y, mont_z, mont_y, checkpoint_path,
+    k=20, base_seed=42, epochs=50, device="cpu"
+):
+    out_dir = BASE_DIR / "7_head_optimization_and_ensembling"
+    print("\n" + "="*75)
+    print("RUNNING ABLATION: 7. Head Hyperparameter Optimization & Multi-Support Ensembling")
+    print(f"Target Directory: {out_dir}")
+    print("="*75)
+
+    supp_idx, query_idx = sample_kshot(sh_y, k=k, seed=base_seed)
+    s_z, s_y = sh_z[supp_idx], sh_y[supp_idx]
+    q_z, q_y = sh_z[query_idx], sh_y[query_idx]
+
+    # --- Part A: Temperature Scaling Sweep ---
+    print("\n[Part A] Running Softmax Temperature Scaling Sweep (tau in [2.0, 20.0])...")
+    head_base = train_proto_head_loo(s_z, s_y, epochs=epochs, lr=0.001, seed=base_seed, device=device)
+    head_base.eval().to(device)
+
+    temp_records = []
+    temps = [2.0, 5.0, 8.0, 10.0, 12.0, 15.0, 20.0]
+    for tau in temps:
+        with torch.no_grad():
+            ps_z = head_base.projection(s_z.to(device))
+            pq_z = head_base.projection(q_z.to(device))
+            p0 = ps_z[s_y.to(device) == 0].mean(dim=0)
+            p1 = ps_z[s_y.to(device) == 1].mean(dim=0)
+            protos = torch.stack([p0, p1])
+
+            qn = F.normalize(pq_z, p=2, dim=-1)
+            pn = F.normalize(protos, p=2, dim=-1)
+            logits_sh = torch.mm(qn, pn.t()) * tau
+            probs_sh = F.softmax(logits_sh, dim=-1)[:, 1].cpu().numpy()
+
+            pqm = head_base.projection(mont_z.to(device))
+            qmn = F.normalize(pqm, p=2, dim=-1)
+            logits_mo = torch.mm(qmn, pn.t()) * tau
+            probs_mo = F.softmax(logits_mo, dim=-1)[:, 1].cpu().numpy()
+
+        sh_eval = clean_eval(evaluate(q_y.cpu().numpy(), probs_sh))
+        mo_eval = clean_eval(evaluate(mont_y.cpu().numpy(), probs_mo))
+
+        temp_records.append({
+            "temperature": tau,
+            "shenzhen": sh_eval,
+            "montgomery": mo_eval,
+        })
+        print(f"  Temperature tau={tau:<4.1f} | Sh AUC: {sh_eval['auc']*100:.2f}%, Acc: {sh_eval['accuracy']*100:.2f}% | Mont AUC: {mo_eval['auc']*100:.2f}%")
+
+    # --- Part B: Adaptation Learning Rate Sweep ---
+    print("\n[Part B] Running Adaptation Learning Rate Sweep (lr in [0.0003, 0.003])...")
+    lr_records = []
+    lrs = [0.0003, 0.0005, 0.001, 0.002, 0.003]
+    for lr_val in lrs:
+        h = train_proto_head_loo(s_z, s_y, epochs=epochs, lr=lr_val, seed=base_seed, device=device)
+        sh_eval = evaluate_with_head(h, s_z, s_y, q_z, q_y, device=device)
+        mo_eval = evaluate_with_head(h, s_z, s_y, mont_z, mont_y, device=device)
+
+        lr_records.append({
+            "learning_rate": lr_val,
+            "shenzhen": sh_eval,
+            "montgomery": mo_eval,
+        })
+        print(f"  LR={lr_val:<7.4f} | Sh AUC: {sh_eval['auc']*100:.2f}%, Acc: {sh_eval['accuracy']*100:.2f}%, Spec: {sh_eval['specificity']*100:.2f}% | Mont AUC: {mo_eval['auc']*100:.2f}%")
+
+    # --- Part C: Multi-Support Bagging Ensemble ---
+    print("\n[Part C] Running Multi-Support Bagging Ensemble (M in [1, 3, 5] Heads)...")
+    ensemble_seeds = [42, 101, 202, 303, 404]
+    heads = []
+    supp_data = []
+    all_supp_indices = set()
+    supp_dict = {}
+
+    for s in ensemble_seeds:
+        si, _ = sample_kshot(sh_y, k=k, seed=s)
+        supp_dict[f"seed_{s}"] = si.tolist()
+        all_supp_indices.update(si.tolist())
+        h = train_proto_head_loo(sh_z[si], sh_y[si], epochs=epochs, lr=0.001, seed=s, device=device)
+        heads.append(h)
+        supp_data.append((sh_z[si], sh_y[si]))
+
+    common_q_idx = torch.tensor([i for i in range(len(sh_y)) if i not in all_supp_indices], dtype=torch.long)
+    common_q_z = sh_z[common_q_idx]
+    common_q_y = sh_y[common_q_idx]
+    print(f"  Hold-out Unseen Ensemble Query Scans: {len(common_q_idx)} images")
+
+    ensemble_records = []
+    for n_heads in [1, 3, 5]:
+        probs_sh = []
+        probs_mo = []
+        for i in range(n_heads):
+            h = heads[i]
+            sz, sy = supp_data[i]
+            h.eval().to(device)
+            with torch.no_grad():
+                psz = h.projection(sz.to(device))
+                pqz = h.projection(common_q_z.to(device))
+                p0 = psz[sy.to(device) == 0].mean(dim=0)
+                p1 = psz[sy.to(device) == 1].mean(dim=0)
+                protos = torch.stack([p0, p1])
+
+                qn = F.normalize(pqz, p=2, dim=-1)
+                pn = F.normalize(protos, p=2, dim=-1)
+                logits = torch.mm(qn, pn.t()) * 10.0
+                probs_sh.append(F.softmax(logits, dim=-1)[:, 1].cpu().numpy())
+
+                pqm = h.projection(mont_z.to(device))
+                qmn = F.normalize(pqm, p=2, dim=-1)
+                logits_m = torch.mm(qmn, pn.t()) * 10.0
+                probs_mo.append(F.softmax(logits_m, dim=-1)[:, 1].cpu().numpy())
+
+        avg_probs_sh = np.mean(probs_sh, axis=0)
+        avg_probs_mo = np.mean(probs_mo, axis=0)
+
+        eval_sh = clean_eval(evaluate(common_q_y.cpu().numpy(), avg_probs_sh))
+        eval_mo = clean_eval(evaluate(mont_y.cpu().numpy(), avg_probs_mo))
+
+        ensemble_records.append({
+            "num_heads": n_heads,
+            "seeds_used": ensemble_seeds[:n_heads],
+            "query_samples": len(common_q_idx),
+            "shenzhen": eval_sh,
+            "montgomery": eval_mo,
+        })
+        print(f"  Ensemble ({n_heads} Heads) | Sh AUC: {eval_sh['auc']*100:.2f}%, Acc: {eval_sh['accuracy']*100:.2f}%, Sens: {eval_sh['sensitivity']*100:.2f}%, Spec: {eval_sh['specificity']*100:.2f}% | Mont AUC: {eval_mo['auc']*100:.2f}%")
+
+    # Format summary markdown
+    md_lines = [
+        "# Ablation Study 7: Head Hyperparameter Optimization & Multi-Support Ensembling",
+        f"- **Checkpoint**: `{checkpoint_path}`",
+        f"- **Few-Shot Shots ($K$)**: `{k}` per class",
+        f"- **Adaptation Epochs**: `{epochs}`\n",
+        "### Part A: Softmax Temperature Scaling ($\tau$)",
+        "| Temperature | Shenzhen ROC-AUC | Shenzhen Accuracy | Shenzhen Sensitivity | Shenzhen Specificity | Montgomery ROC-AUC |",
+        "| :---: | :---: | :---: | :---: | :---: | :---: |",
+    ]
+    for r in temp_records:
+        md_lines.append(f"| **{r['temperature']}** | {r['shenzhen']['auc']*100:.2f}% | {r['shenzhen']['accuracy']*100:.2f}% | {r['shenzhen']['sensitivity']*100:.2f}% | {r['shenzhen']['specificity']*100:.2f}% | {r['montgomery']['auc']*100:.2f}% |")
+
+    md_lines.extend([
+        "\n### Part B: Learning Rate Sweep (AdamW, 50 Epochs)",
+        "| Learning Rate | Shenzhen ROC-AUC | Shenzhen Accuracy | Shenzhen Sensitivity | Shenzhen Specificity | Montgomery ROC-AUC |",
+        "| :---: | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in lr_records:
+        md_lines.append(f"| **{r['learning_rate']}** | {r['shenzhen']['auc']*100:.2f}% | {r['shenzhen']['accuracy']*100:.2f}% | {r['shenzhen']['sensitivity']*100:.2f}% | {r['shenzhen']['specificity']*100:.2f}% | {r['montgomery']['auc']*100:.2f}% |")
+
+    md_lines.extend([
+        "\n### Part C: Multi-Support Bagging Ensemble",
+        "| Ensemble Configuration | Shenzhen ROC-AUC | Shenzhen Accuracy | Shenzhen Sensitivity | Shenzhen Specificity | Montgomery ROC-AUC |",
+        "| :---: | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in ensemble_records:
+        md_lines.append(f"| **{r['num_heads']} Head(s)** | {r['shenzhen']['auc']*100:.2f}% | {r['shenzhen']['accuracy']*100:.2f}% | {r['shenzhen']['sensitivity']*100:.2f}% | {r['shenzhen']['specificity']*100:.2f}% | {r['montgomery']['auc']*100:.2f}% |")
+
+    save_reproducibility_artifacts(
+        out_dir=out_dir,
+        suite_name="optimization_and_ensembling",
+        results_data={
+            "temperature_sweep": temp_records,
+            "learning_rate_sweep": lr_records,
+            "multi_support_ensemble": ensemble_records,
+        },
+        support_indices={
+            "base_support": supp_idx.tolist(),
+            "ensemble_support_sets": supp_dict,
+            "common_unseen_query_count": len(common_q_idx),
+        },
+        checkpoint_path=checkpoint_path,
+        seed=base_seed,
+        summary_markdown="\n".join(md_lines),
+    )
+
+
 # ==============================================================================
 # Driver
 # ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="Prototypical Head Reproducible Ablation Runner")
-    parser.add_argument("--suite", choices=["distance", "architecture", "aggregation", "kshot", "seeds", "epochs", "all"], default="distance",
+    parser.add_argument("--suite", choices=["distance", "architecture", "aggregation", "kshot", "seeds", "epochs", "ensembling", "all"], default="distance",
                         help="Which ablation suite to execute (default: distance)")
     parser.add_argument("--config", default="configs/local_stage2.yaml")
     parser.add_argument("--checkpoint", default="experiments/main_experiment/checkpoints/flame_round_099.pt")
@@ -690,6 +878,9 @@ def main():
 
     if args.suite in ("epochs", "all"):
         run_suite_epochs(sh_z, sh_y, mont_z, mont_y, str(ckpt_path), k=args.k, seed=args.seed, device=device)
+
+    if args.suite in ("ensembling", "all"):
+        run_suite_ensembling(sh_z, sh_y, mont_z, mont_y, str(ckpt_path), k=args.k, base_seed=args.seed, device=device)
 
     print("\n" + "="*75)
     print("[COMPLETED] All requested ablations executed and saved!")

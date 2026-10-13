@@ -16,6 +16,7 @@ Execution shortcuts and command documentation: [`COMMANDS.md`](COMMANDS.md) | Wi
 | [`4_k_shot_scaling/`](4_k_shot_scaling/) | Support Set Shot Sweep ($K \in [3, 5, 10, 15, 20, 30]$) | [**`4_k_shot_scaling/results.md`**](4_k_shot_scaling/results.md) | Peak unadapted sample efficiency occurs at **$K=10$ (71.35% AUC, 79.75% Sensitivity)**. |
 | [`5_seed_robustness/`](5_seed_robustness/) | 10-Episode Monte Carlo Sampling (10 random seeds) | [**`5_seed_robustness/results.md`**](5_seed_robustness/results.md) | **$67.89 \pm 5.99\%$ AUC** on Shenzhen across 10 independent random sampling episodes. |
 | [`6_training_epochs/`](6_training_epochs/) | Adaptation Training Epochs ($E \in \{0, 10, 25, 50, 75, 100, 150, 200\}$) | [**`6_training_epochs/results.md`**](6_training_epochs/results.md) | **Peak ROC-AUC reaches 84.70% at 50 Epochs** (+15.77% gain); beyond 100 epochs, head overfits. |
+| [`7_head_optimization_and_ensembling/`](7_head_optimization_and_ensembling/) | Temperature scaling, LR sweep, and Multi-Support Bagging ($M \in \{1, 3, 5\}$) | [**`7_head_optimization_and_ensembling/results.md`**](7_head_optimization_and_ensembling/results.md) | **5-Head Support Bagging breaks 80% accuracy** (**80.29% Accuracy**, **84.97% AUC**, **84.39% Specificity**). |
 
 ---
 
@@ -43,6 +44,12 @@ python scripts/run_proto_ablations.py --suite kshot
 
 # Re-run Multi-Seed Monte Carlo suite only
 python scripts/run_proto_ablations.py --suite seeds
+
+# Re-run Training Epochs progression suite only
+python scripts/run_proto_ablations.py --suite epochs
+
+# Re-run Head Optimization & Multi-Support Ensembling suite only
+python scripts/run_proto_ablations.py --suite ensembling
 
 # Re-run ALL suites in sequence
 python scripts/run_proto_ablations.py --suite all
