@@ -15,7 +15,7 @@ model:
   decoder_depth: 4
 
 ssl:
-  epochs_per_round: 1
+  epochs_per_round: 2
   batch_size: 24
   lr: 1.0e-3
   limit_samples: 50000
