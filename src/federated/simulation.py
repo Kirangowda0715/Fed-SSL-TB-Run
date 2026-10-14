@@ -233,6 +233,23 @@ def main():
                 print(f"[Resume] Restored {len(logger.rounds)} previous rounds from log\n")
             else:
                 print(f"[Resume] Notice: Training history log not found in {log_dir}, new rounds will be appended.\n")
+
+            privacy_cfg = getattr(config, "privacy", None)
+            if bool(getattr(privacy_cfg, "enabled", False)):
+                latest_ckpt_data = torch.load(str(latest_ckpt), map_location="cpu", weights_only=False)
+                saved_metrics = latest_ckpt_data.get("metrics", {})
+                saved_privacy = saved_metrics.get("privacy", {})
+                if saved_privacy and "client_states" in saved_privacy:
+                    client_privacy_states = {
+                        int(k): v for k, v in saved_privacy["client_states"].items()
+                    }
+                    print(f"[Resume] Restored cumulative privacy states for {len(client_privacy_states)} clients.")
+                else:
+                    raise ValueError(
+                        f"Cannot resume DP-enabled training from checkpoint {latest_ckpt.name}: "
+                        f"checkpoint does not contain valid cumulative privacy metadata. "
+                        f"Resuming without privacy expenditure history would falsely under-report cumulative budget."
+                    )
         else:
             print(f"[Resume] No checkpoints found in {ckpt_dir}")
             if history_loaded:
@@ -248,6 +265,19 @@ def main():
     if logger is None:
         logger = RoundLogger(config.logging.log_dir)
 
+    # Initialize per-client cumulative privacy states if not already restored
+    privacy_cfg = getattr(config, "privacy", None)
+    use_dp = bool(getattr(privacy_cfg, "enabled", False))
+    if "client_privacy_states" not in locals() or client_privacy_states is None:
+        client_privacy_states = {
+            hid: {
+                "hospital_id": hid,
+                "steps": 0,
+                "accountant_state": None,
+            }
+            for hid in range(1, len(hospital_loaders) + 1)
+        }
+
     # -- Federated Loop ---------------------------------------------------
     print(f"\n[Simulation] Starting federated training for {config.federated.rounds} rounds...\n")
 
@@ -259,14 +289,14 @@ def main():
         # 1. Broadcast global encoder + decoder weights to hospitals.
         global_weights = server.broadcast()
 
-        # 2. Local SSL training at each hospital
+        # 2. Local SSL training at each hospital with cumulative privacy state
         if parallel:
             hospital_results = _train_parallel(
-                global_model, global_weights, hospital_loaders, config, training_devices
+                global_model, global_weights, hospital_loaders, config, training_devices, client_privacy_states
             )
         else:
             hospital_results = _train_sequential(
-                global_model, global_weights, hospital_loaders, config, device
+                global_model, global_weights, hospital_loaders, config, device, client_privacy_states
             )
 
         # 3. Collect weights and sample counts
@@ -283,8 +313,41 @@ def main():
         # 5. Update global encoder + decoder
         server.update_global_model(aggregated_weights)
 
-        # 6. Save checkpoint
-        ckpt_path = server.save_checkpoint(round_num)
+        # 6. Build federation-wide per-client privacy summary
+        privacy_summary = None
+        if use_dp:
+            privacy_summary = {
+                "privacy_unit": "per_image_local_partition",
+                "guarantee_scope": (
+                    "Each hospital trains on a disjoint local dataset partition. "
+                    "By parallel composition across disjoint client datasets, an individual image's "
+                    "privacy budget is bounded strictly by its respective hospital client's local execution."
+                ),
+                "client_states": {
+                    hid: {
+                        "steps": r["privacy"]["steps"],
+                        "max_grad_norm": r["privacy"]["max_grad_norm"],
+                        "noise_multiplier": r["privacy"]["noise_multiplier"],
+                        "delta": r["privacy"]["delta"],
+                        "formal_epsilon_status": r["privacy"]["formal_epsilon_status"],
+                        "epsilon": r["privacy"]["epsilon"],
+                        "accountant_state": r["privacy"]["accountant_state"],
+                    }
+                    for hid, r in enumerate(hospital_results, start=1)
+                    if "privacy" in r
+                },
+                "max_client_steps": max(
+                    (r["privacy"]["steps"] for r in hospital_results if "privacy" in r),
+                    default=0,
+                ),
+            }
+
+        # Save checkpoint
+        ckpt_metrics = {"loss": mean_ssl_loss}
+        if privacy_summary:
+            ckpt_metrics["privacy"] = privacy_summary
+
+        ckpt_path = server.save_checkpoint(round_num, metrics=ckpt_metrics)
         print(f"  [Round {round_num+1}] Checkpoint saved -> {ckpt_path}")
 
         # 7. Log round
@@ -293,6 +356,11 @@ def main():
             "hospital_losses": [{"ssl": l} for l in ssl_losses],
             "sample_counts": sample_counts,
         }
+        if privacy_summary:
+            log_entry["privacy"] = privacy_summary
+            print(f"  [Round {round_num+1}] DP Tracking: max_client_steps = {privacy_summary['max_client_steps']} | unit = {privacy_summary['privacy_unit']}")
+            for hid, c_data in privacy_summary["client_states"].items():
+                print(f"    - Hospital {hid}: steps={c_data['steps']}, status={c_data['formal_epsilon_status']}, eps={c_data['epsilon']}")
         logger.log(round_num, log_entry)
 
     # ── Final Summary ─────────────────────────────────────────────────────
@@ -322,12 +390,13 @@ def _train_sequential(
     hospital_loaders,
     config,
     device,
+    client_privacy_states=None,
 ) -> List[Dict[str, Any]]:
     """Train hospitals one-by-one (default mode)."""
     results = []
     for hospital_id, loader in enumerate(hospital_loaders, start=1):
-        # Give each hospital a fresh copy of the global model
         hospital_model = copy.deepcopy(global_model)
+        p_state = client_privacy_states.get(hospital_id) if client_privacy_states else None
         result = ssl_local_train(
             hospital_id=hospital_id,
             model=hospital_model,
@@ -335,8 +404,11 @@ def _train_sequential(
             config=config,
             global_weights=global_weights,
             device=device,
+            privacy_state=p_state,
         )
         results.append(result)
+        if client_privacy_states is not None and "privacy" in result:
+            client_privacy_states[hospital_id] = result["privacy"]
     return results
 
 
@@ -346,6 +418,7 @@ def _train_parallel(
     hospital_loaders,
     config,
     training_devices,
+    client_privacy_states=None,
 ) -> List[Dict[str, Any]]:
     """Train hospitals in parallel, with no more than one worker per device."""
     results = [None] * len(hospital_loaders)
@@ -354,14 +427,34 @@ def _train_parallel(
         hospital_id, loader, hospital_device = args
         hospital_model = copy.deepcopy(global_model)
         print(f"[Hospital {hospital_id}] Training on {hospital_device}")
-        return hospital_id, ssl_local_train(
+        p_state = client_privacy_states.get(hospital_id) if client_privacy_states else None
+        res = ssl_local_train(
             hospital_id=hospital_id,
             model=hospital_model,
             dataloader=loader,
             config=config,
             global_weights=global_weights,
             device=hospital_device,
+            privacy_state=p_state,
         )
+        return hospital_id, res
+
+    worker_count = min(len(hospital_loaders), len(training_devices))
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {
+            pool.submit(
+                _train_one,
+                (hid, loader, training_devices[(hid - 1) % len(training_devices)]),
+            ): hid
+            for hid, loader in enumerate(hospital_loaders, start=1)
+        }
+        for future in as_completed(futures):
+            hospital_id, result = future.result()
+            results[hospital_id - 1] = result
+            if client_privacy_states is not None and "privacy" in result:
+                client_privacy_states[hospital_id] = result["privacy"]
+
+    return results
 
     worker_count = min(len(hospital_loaders), len(training_devices))
     with ThreadPoolExecutor(max_workers=worker_count) as pool:

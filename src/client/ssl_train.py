@@ -50,6 +50,7 @@ def ssl_local_train(
     config,
     global_weights: Optional[Dict[str, Any]] = None,
     device: Optional[torch.device] = None,
+    privacy_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Train the MAE locally on hospital data for one federated round.
@@ -63,12 +64,10 @@ def ssl_local_train(
                          If provided, FedProx proximal regularization is applied.
                          If None, standard MAE loss only (FedAvg mode).
         device         : torch.device; defaults to CUDA if available
+        privacy_state  : Optional prior cumulative privacy state dictionary for continuous accounting
 
     Returns:
-        Dict with:
-            'federated_weights' : Nested encoder + decoder state_dicts (to send to server)
-            'num_samples'     : Number of training samples seen
-            'epoch_losses'    : List of mean loss per epoch
+        Dict with federated_weights, num_samples, epoch_losses, and optional privacy metadata.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -87,10 +86,36 @@ def ssl_local_train(
     num_epochs = config.ssl.epochs_per_round
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
+    # ── Privacy setup ────────────────────────────────────────────────────
+    privacy_cfg = getattr(config, "privacy", None)
+    use_dp = bool(getattr(privacy_cfg, "enabled", False))
+
     # ── FedProx setup ────────────────────────────────────────────────────
     is_fedprox = (global_weights is not None) and (config.federated.aggregation == "fedprox")
     mu = getattr(config.federated, "fedprox_mu", 0.01)
 
+    if use_dp and (is_fedprox or str(getattr(config.federated, "aggregation", "")).lower() == "fedprox"):
+        raise ValueError(
+            "DP + FedProx combination is explicitly rejected: adding deterministic proximal "
+            "regularization into AdamW adaptive moment accumulators (v_t) distorts the proximal "
+            "rate across parameters and violates DP calibration. Use 'federated.aggregation: fedavg' for DP pretraining."
+        )
+
+    dp_engine = None
+    if use_dp:
+        from src.client.dp_engine import DPEngine
+        max_grad_norm = float(getattr(privacy_cfg, "max_grad_norm", 1.0))
+        noise_multiplier = float(getattr(privacy_cfg, "noise_multiplier", 1.0))
+        delta = float(getattr(privacy_cfg, "delta", 1e-5))
+        sampling_scheme = str(getattr(privacy_cfg, "sampling_scheme", "shuffle_without_replacement"))
+        dp_engine = DPEngine(
+            max_grad_norm=max_grad_norm,
+            noise_multiplier=noise_multiplier,
+            delta=delta,
+            sampling_scheme=sampling_scheme,
+        )
+        if privacy_state and "accountant_state" in privacy_state:
+            dp_engine.accountant.load_state_dict(privacy_state["accountant_state"])
 
     # ── Training loop ────────────────────────────────────────────────────
     epoch_losses: List[float] = []
@@ -113,25 +138,45 @@ def ssl_local_train(
             else:
                 imgs = batch.to(device)
 
-            optimizer.zero_grad()
+            if use_dp and dp_engine is not None:
+                # ── Differentially Private Per-Example Path ───────────────────
+                clipped_sum, batch_loss, _ = dp_engine.clip_and_accumulate_gradients(
+                    model=model,
+                    batch_inputs=imgs,
+                    train_parameters=train_parameters,
+                )
+                dp_engine.add_noise_and_assign_gradients(
+                    clipped_sum_dict=clipped_sum,
+                    train_parameters=train_parameters,
+                    batch_size=imgs.shape[0],
+                )
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
 
-            # MAE forward pass → reconstruction loss
-            loss, _, _ = model(imgs)
+                # Record step in accountant
+                ds_len = len(dataloader.dataset) if hasattr(dataloader, "dataset") else imgs.shape[0] * len(dataloader)
+                q = float(imgs.shape[0]) / max(float(ds_len), 1.0)
+                dp_engine.accountant.step(q=q, noise_multiplier=dp_engine.noise_multiplier, steps=1)
+            else:
+                # ── Canonical Non-Private Path (Unchanged) ────────────────────
+                optimizer.zero_grad()
 
-            # FedProx proximal term: μ/2 * ||w_local - w_global||²
-            # Computed over live encoder parameters to preserve the autograd computational graph
-            if is_fedprox and global_weights is not None:
-                proximal_term = _fedprox_penalty(model, global_weights, device)
-                loss = loss + (mu / 2.0) * proximal_term
+                # MAE forward pass → reconstruction loss
+                loss, _, _ = model(imgs)
 
-            loss.backward()
+                # FedProx proximal term: μ/2 * ||w_local - w_global||²
+                if is_fedprox and global_weights is not None:
+                    proximal_term = _fedprox_penalty(model, global_weights, device)
+                    loss = loss + (mu / 2.0) * proximal_term
 
-            # Gradient clipping for stability
-            nn.utils.clip_grad_norm_(train_parameters, max_norm=1.0)
+                loss.backward()
 
-            optimizer.step()
+                # Gradient clipping for stability
+                nn.utils.clip_grad_norm_(train_parameters, max_norm=1.0)
 
-            batch_loss = loss.item()
+                optimizer.step()
+                batch_loss = loss.item()
+
             epoch_loss += batch_loss
             num_batches += 1
             num_samples += imgs.shape[0]
@@ -154,7 +199,7 @@ def ssl_local_train(
         f"Final loss: {epoch_losses[-1]:.4f}"
     )
 
-    return {
+    result = {
         "federated_weights": federated_weights,
         # Keep this alias temporarily for callers/tests that inspect encoder weights.
         "encoder_weights": federated_weights["encoder"],
@@ -162,4 +207,22 @@ def ssl_local_train(
         "epoch_losses": epoch_losses,
         "ssl_loss": epoch_losses[-1] if epoch_losses else float("nan"),
     }
+
+    if use_dp and dp_engine is not None:
+        eps = dp_engine.accountant.get_epsilon(dp_engine.delta)
+        result["privacy"] = {
+            "enabled": True,
+            "max_grad_norm": dp_engine.max_grad_norm,
+            "noise_multiplier": dp_engine.noise_multiplier,
+            "delta": dp_engine.delta,
+            "steps": dp_engine.accountant.steps,
+            "epsilon": eps,
+            "formal_epsilon_status": (
+                "supported" if eps is not None else "unsupported_under_shuffle_without_replacement"
+            ),
+            "privacy_unit": "image",
+            "accountant_state": dp_engine.accountant.state_dict(),
+        }
+
+    return result
 
