@@ -32,7 +32,7 @@ privacy:
   noise_multiplier: 1.1
   delta: 1.0e-5
   accountant: "rdp"
-  sampling_mode: "poisson"
+  sampling_scheme: "shuffle_without_replacement"
 
 finetuning:
   few_shot_k: 5
