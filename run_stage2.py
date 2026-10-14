@@ -22,20 +22,29 @@ def main():
     config = load_config(args.config)
     checkpoint_path = Path(args.checkpoint)
     if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        rel_path = Path(__file__).resolve().parent / args.checkpoint.replace("/kaggle/working/Fed-SSL-TB/", "")
+        if rel_path.exists():
+            checkpoint_path = rel_path
+        else:
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[Stage 2] Device: {device}")
     print(f"[Stage 2] Checkpoint: {checkpoint_path}")
     print(f"[Stage 2] K-shot per class: {config.finetuning.few_shot_k}")
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     if "encoder_state_dict" not in checkpoint:
         raise ValueError("Checkpoint does not contain encoder_state_dict.")
 
+    saved_cfg = checkpoint.get("config", {})
+    backbone = saved_cfg.get("backbone", config.model.backbone)
+    embed_dim = saved_cfg.get("embed_dim", config.model.embed_dim)
+    print(f"[Stage 2] Architecture: backbone={backbone}, embed_dim={embed_dim}")
+
     model = build_mae(
-        backbone=config.model.backbone,
-        embed_dim=config.model.embed_dim,
+        backbone=backbone,
+        embed_dim=embed_dim,
         mask_ratio=config.model.mask_ratio,
         decoder_depth=config.model.decoder_depth,
         image_size=config.data.image_size,

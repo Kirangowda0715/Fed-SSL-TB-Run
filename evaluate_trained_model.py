@@ -16,21 +16,48 @@ from src.utils.reproducibility import seed_everything
 
 
 def main():
-    config = load_config()
+    import argparse
+    parser = argparse.ArgumentParser(description="Evaluate federated encoder")
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    parser.add_argument("--checkpoint", default=None, help="Path to checkpoint .pt file")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
     seed_everything(int(config.finetuning.seed))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint_dir = Path(config.logging.checkpoint_dir)
-    checkpoints = sorted(
-        list(checkpoint_dir.glob("flame_round_*.pt")) + list(checkpoint_dir.glob("encoder_round_*.pt")),
-        key=lambda p: int(p.stem.split("_")[-1])
-    )
-    checkpoint = checkpoint_dir / "best_encoder.pt"
-    if not checkpoint.exists():
-        if not checkpoints:
-            raise FileNotFoundError(f"No encoder checkpoint found in {checkpoint_dir}")
-        checkpoint = checkpoints[-1]
-    encoder = get_encoder(config.model.backbone, config.model.embed_dim)
+
+    checkpoint = None
+    if args.checkpoint:
+        checkpoint = Path(args.checkpoint)
+        if not checkpoint.exists():
+            rel = Path(__file__).resolve().parent / args.checkpoint.replace("/kaggle/working/Fed-SSL-TB/", "")
+            if rel.exists():
+                checkpoint = rel
+            else:
+                raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
+    else:
+        checkpoint_dir = Path(config.logging.checkpoint_dir)
+        if not checkpoint_dir.exists():
+            rel = Path(__file__).resolve().parent / "experiments" / "checkpoints" / checkpoint_dir.name
+            if rel.exists():
+                checkpoint_dir = rel
+        checkpoints = sorted(
+            list(checkpoint_dir.glob("flame_round_*.pt")) + list(checkpoint_dir.glob("encoder_round_*.pt")),
+            key=lambda p: int(p.stem.split("_")[-1])
+        )
+        checkpoint = checkpoint_dir / "best_encoder.pt"
+        if not checkpoint.exists():
+            if not checkpoints:
+                raise FileNotFoundError(f"No encoder checkpoint found in {checkpoint_dir}")
+            checkpoint = checkpoints[-1]
+
     state = torch.load(checkpoint, map_location=device, weights_only=False)
+    saved_cfg = state.get("config", {})
+    backbone = saved_cfg.get("backbone", config.model.backbone)
+    embed_dim = saved_cfg.get("embed_dim", config.model.embed_dim)
+    print(f"[Evaluate] Loading checkpoint: {checkpoint} | backbone={backbone}, embed_dim={embed_dim}")
+
+    encoder = get_encoder(backbone, embed_dim)
     encoder.load_state_dict(state.get("encoder_state_dict", state))
     encoder.to(device)
     transform = get_eval_transform(config.data.image_size)
