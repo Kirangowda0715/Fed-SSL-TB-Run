@@ -1,0 +1,118 @@
+{
+  "configurations": [
+    {
+      "name": "Direct (None, 192d, 0 params)",
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "name": "Linear Projection (192 -> 128d)",
+      "shenzhen": {
+        "auc": 0.6672975097211881,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6582278481012658,
+        "specificity": 0.6568627450980392,
+        "f1": 0.6613672496025437,
+        "balanced_accuracy": 0.6575452965996524
+      },
+      "montgomery": {
+        "auc": 0.515301724137931,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "name": "Linear Projection (192 -> 192d)",
+      "shenzhen": {
+        "auc": 0.6771014312898155,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6677215189873418,
+        "specificity": 0.6470588235294118,
+        "f1": 0.6645669291338583,
+        "balanced_accuracy": 0.6573901712583767
+      },
+      "montgomery": {
+        "auc": 0.5295258620689655,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "name": "2-Layer MLP (192 -> GELU -> 64d)",
+      "shenzhen": {
+        "auc": 0.676574005129478,
+        "accuracy": 0.6543408360128617,
+        "sensitivity": 0.6582278481012658,
+        "specificity": 0.6503267973856209,
+        "f1": 0.659270998415214,
+        "balanced_accuracy": 0.6542773227434433
+      },
+      "montgomery": {
+        "auc": 0.5392241379310345,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "name": "2-Layer MLP (192 -> GELU -> 128d) [Default]",
+      "shenzhen": {
+        "auc": 0.6806486307603209,
+        "accuracy": 0.6591639871382636,
+        "sensitivity": 0.6740506329113924,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6677115987460815,
+        "balanced_accuracy": 0.6589207412922975
+      },
+      "montgomery": {
+        "auc": 0.5353448275862069,
+        "accuracy": 0.41304347826086957,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0,
+        "f1": 0.5846153846153846,
+        "balanced_accuracy": 0.49137931034482757
+      }
+    },
+    {
+      "name": "2-Layer MLP (192 -> GELU -> 256d)",
+      "shenzhen": {
+        "auc": 0.6580934061388268,
+        "accuracy": 0.6479099678456591,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6241830065359477,
+        "f1": 0.6594090202177294,
+        "balanced_accuracy": 0.6475345412426574
+      },
+      "montgomery": {
+        "auc": 0.5234913793103448,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    }
+  ]
+}

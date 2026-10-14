@@ -1,0 +1,42 @@
+{
+  "configurations": [
+    {
+      "method": "Arithmetic Mean Prototype (Standard)",
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "method": "Coordinate Median Prototype (Outlier Robust)",
+      "shenzhen": {
+        "auc": 0.6801108629105651,
+        "accuracy": 0.6527331189710611,
+        "sensitivity": 0.6677215189873418,
+        "specificity": 0.6372549019607843,
+        "f1": 0.6614420062695925,
+        "balanced_accuracy": 0.652488210474063
+      },
+      "montgomery": {
+        "auc": 0.5359913793103448,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    }
+  ]
+}

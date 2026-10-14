@@ -1,0 +1,11 @@
+{
+  "suite": "optimization_and_ensembling",
+  "timestamp": "2026-10-13T23:50:48.316140",
+  "git_commit": "7b6c6b44e92cff07e94bbdc1a10be442af452689",
+  "checkpoint": "experiments\\main_experiment\\checkpoints\\flame_round_099.pt",
+  "seed": 42,
+  "torch_version": "2.5.1+cu121",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "cuda_available": true,
+  "device_name": "NVIDIA GeForce RTX 2050"
+}

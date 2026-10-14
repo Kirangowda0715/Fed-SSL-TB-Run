@@ -1,0 +1,172 @@
+{
+  "configurations": [
+    {
+      "name": "Cosine (tau=1.0)",
+      "metric_type": "cosine",
+      "temperature": 1.0,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "name": "Cosine (tau=5.0)",
+      "metric_type": "cosine",
+      "temperature": 5.0,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "name": "Cosine (tau=10.0) [Baseline]",
+      "metric_type": "cosine",
+      "temperature": 10.0,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "name": "Cosine (tau=20.0)",
+      "metric_type": "cosine",
+      "temperature": 20.0,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    },
+    {
+      "name": "Squared Euclidean (-||d||^2)",
+      "metric_type": "euclidean_sq",
+      "temperature": 10.0,
+      "shenzhen": {
+        "auc": 0.6729233887647886,
+        "accuracy": 0.6591639871382636,
+        "sensitivity": 0.6772151898734177,
+        "specificity": 0.6405228758169934,
+        "f1": 0.66875,
+        "balanced_accuracy": 0.6588690328452056
+      },
+      "montgomery": {
+        "auc": 0.5269396551724138,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "name": "L2 Euclidean (-||d||)",
+      "metric_type": "euclidean_l2",
+      "temperature": 1.0,
+      "shenzhen": {
+        "auc": 0.7281273268801192,
+        "accuracy": 0.6591639871382636,
+        "sensitivity": 0.6772151898734177,
+        "specificity": 0.6405228758169934,
+        "f1": 0.66875,
+        "balanced_accuracy": 0.6588690328452056
+      },
+      "montgomery": {
+        "auc": 0.5773706896551725,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.0125,
+        "f1": 0.5876288659793815,
+        "balanced_accuracy": 0.49762931034482755
+      }
+    },
+    {
+      "name": "Manhattan Distance (L1)",
+      "metric_type": "manhattan_l1",
+      "temperature": 10.0,
+      "shenzhen": {
+        "auc": 0.7467940762803011,
+        "accuracy": 0.6720257234726688,
+        "sensitivity": 0.6835443037974683,
+        "specificity": 0.6601307189542484,
+        "f1": 0.6792452830188679,
+        "balanced_accuracy": 0.6718375113758583
+      },
+      "montgomery": {
+        "auc": 0.5536637931034483,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5
+      }
+    },
+    {
+      "name": "Hyperspherical Euclidean",
+      "metric_type": "normalized_euclidean",
+      "temperature": 10.0,
+      "shenzhen": {
+        "auc": 0.6762223876892529,
+        "accuracy": 0.657556270096463,
+        "sensitivity": 0.6708860759493671,
+        "specificity": 0.6437908496732027,
+        "f1": 0.6656200941915228,
+        "balanced_accuracy": 0.6573384628112848
+      },
+      "montgomery": {
+        "auc": 0.530603448275862,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276
+      }
+    }
+  ]
+}
