@@ -1,0 +1,561 @@
+{
+  "architecture": "vit_small",
+  "embed_dim": 384,
+  "round": 55,
+  "shenzhen_within_domain": {
+    "suite_1_direct_metrics": {
+      "Euclidean L2": {
+        "auc": 0.7719862227324914,
+        "accuracy": 0.7045454545454546,
+        "sensitivity": 0.7611940298507462,
+        "specificity": 0.6461538461538462,
+        "f1": 0.723404255319149,
+        "balanced_accuracy": 0.7036739380022963,
+        "confusion_matrix": [
+          [
+            42,
+            23
+          ],
+          [
+            16,
+            51
+          ]
+        ]
+      },
+      "Cosine (tau=1.0)": {
+        "auc": 0.6681974741676234,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.7164179104477612,
+        "specificity": 0.676923076923077,
+        "f1": 0.7058823529411765,
+        "balanced_accuracy": 0.6966704936854191,
+        "confusion_matrix": [
+          [
+            44,
+            21
+          ],
+          [
+            19,
+            48
+          ]
+        ]
+      },
+      "Cosine (tau=5.0)": {
+        "auc": 0.6681974741676234,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.7164179104477612,
+        "specificity": 0.676923076923077,
+        "f1": 0.7058823529411765,
+        "balanced_accuracy": 0.6966704936854191,
+        "confusion_matrix": [
+          [
+            44,
+            21
+          ],
+          [
+            19,
+            48
+          ]
+        ]
+      },
+      "Cosine (tau=10.0)": {
+        "auc": 0.6681974741676234,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.7164179104477612,
+        "specificity": 0.676923076923077,
+        "f1": 0.7058823529411765,
+        "balanced_accuracy": 0.6966704936854191,
+        "confusion_matrix": [
+          [
+            44,
+            21
+          ],
+          [
+            19,
+            48
+          ]
+        ]
+      },
+      "Cosine (tau=20.0)": {
+        "auc": 0.6681974741676234,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.7164179104477612,
+        "specificity": 0.676923076923077,
+        "f1": 0.7058823529411765,
+        "balanced_accuracy": 0.6966704936854191,
+        "confusion_matrix": [
+          [
+            44,
+            21
+          ],
+          [
+            19,
+            48
+          ]
+        ]
+      },
+      "Centered Cosine (tau=10.0)": {
+        "auc": 0.7301951779563719,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.746268656716418,
+        "specificity": 0.6461538461538462,
+        "f1": 0.7142857142857143,
+        "balanced_accuracy": 0.6962112514351321,
+        "confusion_matrix": [
+          [
+            42,
+            23
+          ],
+          [
+            17,
+            50
+          ]
+        ]
+      }
+    },
+    "suite_2_k_shot_scaling": {
+      "K=3": {
+        "auc": 0.548564867967853,
+        "accuracy": 0.4090909090909091,
+        "sensitivity": 0.11940298507462686,
+        "specificity": 0.7076923076923077,
+        "f1": 0.1702127659574468,
+        "balanced_accuracy": 0.4135476463834673,
+        "confusion_matrix": [
+          [
+            46,
+            19
+          ],
+          [
+            59,
+            8
+          ]
+        ]
+      },
+      "K=5": {
+        "auc": 0.5791044776119403,
+        "accuracy": 0.4393939393939394,
+        "sensitivity": 0.1791044776119403,
+        "specificity": 0.7076923076923077,
+        "f1": 0.24489795918367346,
+        "balanced_accuracy": 0.443398392652124,
+        "confusion_matrix": [
+          [
+            46,
+            19
+          ],
+          [
+            55,
+            12
+          ]
+        ]
+      },
+      "K=10": {
+        "auc": 0.7801377726750861,
+        "accuracy": 0.7121212121212122,
+        "sensitivity": 0.7910447761194029,
+        "specificity": 0.6307692307692307,
+        "f1": 0.7361111111111112,
+        "balanced_accuracy": 0.7109070034443168,
+        "confusion_matrix": [
+          [
+            41,
+            24
+          ],
+          [
+            14,
+            53
+          ]
+        ]
+      },
+      "K=15": {
+        "auc": 0.7725602755453502,
+        "accuracy": 0.6893939393939394,
+        "sensitivity": 0.746268656716418,
+        "specificity": 0.6307692307692307,
+        "f1": 0.7092198581560284,
+        "balanced_accuracy": 0.6885189437428243,
+        "confusion_matrix": [
+          [
+            41,
+            24
+          ],
+          [
+            17,
+            50
+          ]
+        ]
+      },
+      "K=20": {
+        "auc": 0.7301951779563719,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.746268656716418,
+        "specificity": 0.6461538461538462,
+        "f1": 0.7142857142857143,
+        "balanced_accuracy": 0.6962112514351321,
+        "confusion_matrix": [
+          [
+            42,
+            23
+          ],
+          [
+            17,
+            50
+          ]
+        ]
+      },
+      "K=30": {
+        "auc": 0.7380022962112515,
+        "accuracy": 0.696969696969697,
+        "sensitivity": 0.7761194029850746,
+        "specificity": 0.6153846153846154,
+        "f1": 0.7222222222222222,
+        "balanced_accuracy": 0.695752009184845,
+        "confusion_matrix": [
+          [
+            40,
+            25
+          ],
+          [
+            15,
+            52
+          ]
+        ]
+      }
+    },
+    "suite_3_stage2_adaptation": {
+      "auc": 0.8642939150401837,
+      "accuracy": 0.7878787878787878,
+      "sensitivity": 0.8208955223880597,
+      "specificity": 0.7538461538461538,
+      "f1": 0.7971014492753623,
+      "balanced_accuracy": 0.7873708381171067,
+      "confusion_matrix": [
+        [
+          49,
+          16
+        ],
+        [
+          12,
+          55
+        ]
+      ]
+    },
+    "suite_4_bagging": {
+      "m_5": {
+        "auc": 0.7468427095292767,
+        "accuracy": 0.6893939393939394,
+        "sensitivity": 0.746268656716418,
+        "specificity": 0.6307692307692307,
+        "f1": 0.7092198581560284,
+        "balanced_accuracy": 0.6885189437428243,
+        "confusion_matrix": [
+          [
+            41,
+            24
+          ],
+          [
+            17,
+            50
+          ]
+        ]
+      },
+      "m_10": {
+        "auc": 0.734443168771527,
+        "accuracy": 0.6818181818181818,
+        "sensitivity": 0.746268656716418,
+        "specificity": 0.6153846153846154,
+        "f1": 0.704225352112676,
+        "balanced_accuracy": 0.6808266360505166,
+        "confusion_matrix": [
+          [
+            40,
+            25
+          ],
+          [
+            17,
+            50
+          ]
+        ]
+      }
+    }
+  },
+  "montgomery_cross_domain": {
+    "suite_1_direct_metrics": {
+      "Euclidean L2": {
+        "auc": 0.5122844827586207,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "Cosine (tau=1.0)": {
+        "auc": 0.5161637931034482,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276,
+        "confusion_matrix": [
+          [
+            2,
+            78
+          ],
+          [
+            1,
+            57
+          ]
+        ]
+      },
+      "Cosine (tau=5.0)": {
+        "auc": 0.5161637931034482,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276,
+        "confusion_matrix": [
+          [
+            2,
+            78
+          ],
+          [
+            1,
+            57
+          ]
+        ]
+      },
+      "Cosine (tau=10.0)": {
+        "auc": 0.5161637931034482,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276,
+        "confusion_matrix": [
+          [
+            2,
+            78
+          ],
+          [
+            1,
+            57
+          ]
+        ]
+      },
+      "Cosine (tau=20.0)": {
+        "auc": 0.5161637931034482,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 0.9827586206896551,
+        "specificity": 0.025,
+        "f1": 0.5906735751295337,
+        "balanced_accuracy": 0.5038793103448276,
+        "confusion_matrix": [
+          [
+            2,
+            78
+          ],
+          [
+            1,
+            57
+          ]
+        ]
+      },
+      "Centered Cosine (tau=10.0)": {
+        "auc": 0.5233836206896552,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      }
+    },
+    "suite_2_k_shot_scaling": {
+      "K=3": {
+        "auc": 0.4700431034482758,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "K=5": {
+        "auc": 0.5105603448275863,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "K=10": {
+        "auc": 0.5329741379310344,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "K=15": {
+        "auc": 0.5155172413793103,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "K=20": {
+        "auc": 0.5233836206896552,
+        "accuracy": 0.427536231884058,
+        "sensitivity": 1.0,
+        "specificity": 0.0125,
+        "f1": 0.5948717948717949,
+        "balanced_accuracy": 0.50625,
+        "confusion_matrix": [
+          [
+            1,
+            79
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "K=30": {
+        "auc": 0.521228448275862,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5,
+        "confusion_matrix": [
+          [
+            0,
+            80
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      }
+    },
+    "suite_3_stage2_adaptation": {
+      "auc": 0.5282327586206896,
+      "accuracy": 0.427536231884058,
+      "sensitivity": 1.0,
+      "specificity": 0.0125,
+      "f1": 0.5948717948717949,
+      "balanced_accuracy": 0.50625,
+      "confusion_matrix": [
+        [
+          1,
+          79
+        ],
+        [
+          0,
+          58
+        ]
+      ]
+    },
+    "suite_4_bagging": {
+      "m_5": {
+        "auc": 0.5454741379310346,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5,
+        "confusion_matrix": [
+          [
+            0,
+            80
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      },
+      "m_10": {
+        "auc": 0.541271551724138,
+        "accuracy": 0.42028985507246375,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "f1": 0.5918367346938775,
+        "balanced_accuracy": 0.5,
+        "confusion_matrix": [
+          [
+            0,
+            80
+          ],
+          [
+            0,
+            58
+          ]
+        ]
+      }
+    }
+  }
+}

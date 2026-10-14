@@ -13,9 +13,13 @@ venv/
 # Project specific
 data/
 experiments/checkpoints/
+experiments/vit_small/checkpoints/*.zip
+experiments/vit_small/checkpoints/*.pt
+experiments/vit_small/results/*.pt
 experiments/logs/*.pt
 *.pt
 *.pth
+*.zip
 *.txt
 !requirements.txt
 !PROJECT_DOCUMENTATION.md

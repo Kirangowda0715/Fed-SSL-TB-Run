@@ -52,8 +52,9 @@ class Stage1ArchitectureTests(unittest.TestCase):
         server = FederatedServer(self.config)
         server.global_model = object()
         incompatible_configs = (
-            {"backbone": "vit_tiny", "embed_dim": 192},
             {"backbone": "vit_small", "embed_dim": 384},
+            {"backbone": "resnet50", "embed_dim": 2048},
+            {"backbone": "vit_tiny", "embed_dim": 384},
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
