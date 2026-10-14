@@ -26,7 +26,10 @@ def main():
     checkpoint_dir = Path(config.logging.checkpoint_dir)
     checkpoint = checkpoint_dir / "best_encoder.pt"
     if not checkpoint.exists():
-        checkpoints = sorted(checkpoint_dir.glob("encoder_round_*.pt"))
+        checkpoints = sorted(
+            list(checkpoint_dir.glob("flame_round_*.pt")) + list(checkpoint_dir.glob("encoder_round_*.pt")),
+            key=lambda p: int(p.stem.split("_")[-1])
+        )
         checkpoint = checkpoints[-1] if checkpoints else checkpoint
     if checkpoint.exists():
         state = torch.load(checkpoint, map_location=device, weights_only=False)

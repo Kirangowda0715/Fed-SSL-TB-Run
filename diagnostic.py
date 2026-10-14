@@ -17,7 +17,10 @@ config = load_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 encoder = get_encoder(config.model.backbone, config.model.embed_dim).to(device)
 checkpoint_dir = Path(config.logging.checkpoint_dir)
-checkpoints = sorted(checkpoint_dir.glob("encoder_round_*.pt"))
+checkpoints = sorted(
+    list(checkpoint_dir.glob("flame_round_*.pt")) + list(checkpoint_dir.glob("encoder_round_*.pt")),
+    key=lambda p: int(p.stem.split("_")[-1])
+)
 if checkpoints:
     state = torch.load(checkpoints[-1], map_location=device, weights_only=False)
     encoder.load_state_dict(state.get("encoder_state_dict", state))

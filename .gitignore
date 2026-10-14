@@ -12,7 +12,12 @@ venv/
 
 # Project specific
 data/
-experiments/checkpoints/
+experiments/checkpoints/*
+!experiments/checkpoints/.gitkeep
+!experiments/checkpoints/main_stage1_vit_small_384/
+experiments/checkpoints/main_stage1_vit_small_384/*
+!experiments/checkpoints/main_stage1_vit_small_384/flame_round_055.pt
+!experiments/checkpoints/main_stage1_vit_small_384/.gitkeep
 experiments/vit_small/checkpoints/*.zip
 experiments/vit_small/checkpoints/*.pt
 experiments/vit_small/results/*.pt
@@ -20,6 +25,7 @@ experiments/logs/*.pt
 *.pt
 *.pth
 *.zip
+!experiments/checkpoints/main_stage1_vit_small_384/flame_round_055.pt
 *.txt
 !requirements.txt
 !PROJECT_DOCUMENTATION.md

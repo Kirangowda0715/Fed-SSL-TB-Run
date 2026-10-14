@@ -47,8 +47,8 @@ def _find_checkpoint():
         if not checkpoint_dir.exists():
             continue
         candidates.extend([checkpoint_dir / "best_flame.pt", checkpoint_dir / "best_encoder.pt"])
-        candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), reverse=True))
-        candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), reverse=True))
+        candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), key=lambda p: int(p.stem.split("_")[-1]), reverse=True))
+        candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), key=lambda p: int(p.stem.split("_")[-1]), reverse=True))
     return next((path for path in candidates if path.exists()), None)
 
 

@@ -180,6 +180,7 @@ class FederatedServer:
             checkpoint["metrics"] = metrics
 
         ckpt_path = self.checkpoint_dir / f"flame_round_{round_num:03d}.pt"
+        ckpt_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(checkpoint, str(ckpt_path))
 
 

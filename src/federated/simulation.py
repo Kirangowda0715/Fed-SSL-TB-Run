@@ -196,33 +196,47 @@ def main():
     if resume:
         print(f"\n[Resume] Attempting to restore from checkpoint & history...")
         ckpt_dir = Path(config.logging.checkpoint_dir)
-        ckpts = list(ckpt_dir.glob("flame_round_*.pt")) + list(ckpt_dir.glob("encoder_round_*.pt"))
+        if not ckpt_dir.exists():
+            rel_ckpt_dir = _ROOT / "experiments" / "checkpoints" / ckpt_dir.name
+            if rel_ckpt_dir.exists():
+                ckpt_dir = rel_ckpt_dir
+
+        log_dir = Path(config.logging.log_dir)
+        if not log_dir.exists():
+            rel_log_dir = _ROOT / "experiments" / "logs" / log_dir.name
+            if rel_log_dir.exists():
+                log_dir = rel_log_dir
+
+        # Prioritize flame_round_*.pt naming convention
+        ckpts = list(ckpt_dir.glob("flame_round_*.pt"))
+        if not ckpts:
+            ckpts = list(ckpt_dir.glob("encoder_round_*.pt"))
         
-        # Always try to load logger history when resuming (checkpoint may or may not exist)
-        logger = RoundLogger(config.logging.log_dir)
+        # Always try to load logger history when resuming
+        logger = RoundLogger(log_dir)
         history_loaded = logger.load()
         
         if ckpts:
-            # Sort by round number in filename
+            # Sort numerically by round number in filename
             ckpts.sort(key=lambda x: int(x.stem.split("_")[-1]))
             latest_ckpt = ckpts[-1]
             latest_round = int(latest_ckpt.stem.split("_")[-1])
             
-            print(f"[Resume] Found checkpoint: {latest_ckpt.name}")
-            server.load_checkpoint(str(latest_ckpt))
+            print(f"[Resume] Found checkpoint: {latest_ckpt.name} in {ckpt_dir}")
+            loaded_round = server.load_checkpoint(str(latest_ckpt))
             
-            start_round = latest_round + 1
-            print(f"[Resume] Checkpoint loaded from round {latest_round}")
-            print(f"[Resume] Ready to continue from Round {start_round + 1}")
+            effective_round = loaded_round if loaded_round is not None else latest_round
+            start_round = effective_round + 1
+            print(f"[Resume] Successfully restored model weights from completed Round {effective_round}.")
+            print(f"[Resume] Resuming execution at Round {start_round + 1} of {config.federated.rounds} (round_num={start_round}).")
             if history_loaded:
                 print(f"[Resume] Restored {len(logger.rounds)} previous rounds from log\n")
             else:
-                print(f"[Resume] WARNING: Could not restore training history\n")
+                print(f"[Resume] Notice: Training history log not found in {log_dir}, new rounds will be appended.\n")
         else:
             print(f"[Resume] No checkpoints found in {ckpt_dir}")
             if history_loaded:
-                print(f"[Resume] But restored {len(logger.rounds)} rounds from training log")
-                # Infer start_round from loaded history
+                print(f"[Resume] Restored {len(logger.rounds)} rounds from training log")
                 if logger.rounds:
                     latest_logged_round = max(h["round"] for h in logger.rounds)
                     start_round = latest_logged_round + 1

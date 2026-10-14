@@ -21,8 +21,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_dir = Path(config.logging.checkpoint_dir)
     checkpoints = sorted(
-        list(checkpoint_dir.glob("encoder_round_*.pt")) +
-        list(checkpoint_dir.glob("flame_round_*.pt"))
+        list(checkpoint_dir.glob("flame_round_*.pt")) + list(checkpoint_dir.glob("encoder_round_*.pt")),
+        key=lambda p: int(p.stem.split("_")[-1])
     )
     checkpoint = checkpoint_dir / "best_encoder.pt"
     if not checkpoint.exists():
