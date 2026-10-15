@@ -198,6 +198,7 @@ class DPEngine:
         delta: float = 1e-5,
         generator: Optional[torch.Generator] = None,
         sampling_scheme: str = "shuffle_without_replacement",
+        device: Optional[Union[str, torch.device]] = None,
     ):
         if max_grad_norm <= 0.0:
             raise ValueError(f"max_grad_norm must be positive, got {max_grad_norm}")
@@ -209,13 +210,14 @@ class DPEngine:
         self.max_grad_norm = float(max_grad_norm)
         self.noise_multiplier = float(noise_multiplier)
         self.delta = float(delta)
-        self.generator = generator or self._create_os_seeded_generator()
+        self.device = torch.device(device) if device is not None else None
+        self.generator = generator or self._create_os_seeded_generator(self.device)
         self.accountant = RDPAccountant(sampling_scheme=sampling_scheme)
 
     @staticmethod
-    def _create_os_seeded_generator() -> torch.Generator:
+    def _create_os_seeded_generator(device: Optional[Union[str, torch.device]] = None) -> torch.Generator:
         """Create a torch.Generator seeded with 64 bits from the OS cryptographic entropy pool."""
-        gen = torch.Generator()
+        gen = torch.Generator(device=device) if device is not None else torch.Generator()
         # Seed from OS entropy (secrets module) to avoid default fixed seed
         seed = secrets.randbits(64)
         gen.manual_seed(seed)
@@ -321,11 +323,19 @@ class DPEngine:
 
             # Generate calibrated Gaussian noise
             if noise_std > 0.0:
+                gen = self.generator
+                if gen is not None and hasattr(gen, "device"):
+                    if gen.device.type != summed_g.device.type or (
+                        gen.device.type == "cuda" and gen.device.index != summed_g.device.index
+                    ):
+                        gen = self._create_os_seeded_generator(device=summed_g.device)
+                        self.generator = gen
+
                 noise = torch.randn(
                     summed_g.shape,
                     device=summed_g.device,
                     dtype=summed_g.dtype,
-                    generator=self.generator,
+                    generator=gen,
                 ) * noise_std
                 noisy_sum = summed_g + noise
             else:

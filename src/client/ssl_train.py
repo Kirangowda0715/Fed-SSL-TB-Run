@@ -113,6 +113,7 @@ def ssl_local_train(
             noise_multiplier=noise_multiplier,
             delta=delta,
             sampling_scheme=sampling_scheme,
+            device=device,
         )
         accountant_state = (
             privacy_state.get("accountant_state")
