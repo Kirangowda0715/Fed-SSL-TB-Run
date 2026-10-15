@@ -114,8 +114,13 @@ def ssl_local_train(
             delta=delta,
             sampling_scheme=sampling_scheme,
         )
-        if privacy_state and "accountant_state" in privacy_state:
-            dp_engine.accountant.load_state_dict(privacy_state["accountant_state"])
+        accountant_state = (
+            privacy_state.get("accountant_state")
+            if privacy_state is not None
+            else None
+        )
+        if accountant_state is not None:
+            dp_engine.accountant.load_state_dict(accountant_state)
 
     # ── Training loop ────────────────────────────────────────────────────
     epoch_losses: List[float] = []
