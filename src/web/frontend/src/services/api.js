@@ -1,4 +1,9 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? 'https://fedssl-tb-api.onrender.com'
+    : 'http://localhost:8000')
+).replace(/\/$/, '')
 
 export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status }
@@ -6,7 +11,7 @@ export class ApiError extends Error {
 
 async function request(path, options = {}) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  const timer = setTimeout(() => controller.abort(), 60000)
   try {
     const response = await fetch(`${API_URL}${path}`, { ...options, signal: controller.signal })
     const body = await response.json().catch(() => null)
