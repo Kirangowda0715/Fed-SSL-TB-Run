@@ -6,7 +6,7 @@ services:
     region: singapore
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.web.api:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn src.web.api:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHONPATH
         value: .
