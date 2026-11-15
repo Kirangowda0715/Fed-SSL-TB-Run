@@ -5,12 +5,16 @@ services:
     branch: research/dp-vit-tiny-60-rounds
     region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
     startCommand: python -m uvicorn src.web.api:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: PYTHONPATH
         value: .
       - key: HF_USERNAME
         value: kirangowda07
       - key: HF_REPO
-        value: fedssl-tb
+        value: fed-ssl-tb

@@ -13,7 +13,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 def _download_models():
     hf_user = os.environ.get("HF_USERNAME", "kirangowda07")
-    hf_repo  = os.environ.get("HF_REPO",     "fedssl-tb")
+    hf_repo  = os.environ.get("HF_REPO",     "fed-ssl-tb")
     base_url = f"https://huggingface.co/{hf_user}/{hf_repo}/resolve/main"
 
     _ROOT_HERE = Path(__file__).resolve().parents[2]
@@ -25,15 +25,22 @@ def _download_models():
     }
     for local_path, url in models.items():
         if local_path.exists() and local_path.stat().st_size > 1024:
-            print(f"[Startup] ✓ {local_path.name} already present")
+            print(f"[Startup] ✓ {local_path.name} already present", flush=True)
             continue
-        print(f"[Startup] Downloading {local_path.name} from HuggingFace...")
+        print(f"[Startup] Downloading {local_path.name} from HuggingFace ({url})...", flush=True)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            urllib.request.urlretrieve(url, local_path)
-            print(f"[Startup] ✓ {local_path.name} downloaded ({local_path.stat().st_size // (1024*1024)} MB)")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=120) as response, open(local_path, "wb") as out_file:
+                chunk_size = 1024 * 1024  # 1MB chunks
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+            print(f"[Startup] ✓ {local_path.name} downloaded ({local_path.stat().st_size // (1024*1024)} MB)", flush=True)
         except Exception as e:
-            print(f"[Startup] WARNING: Failed to download {local_path.name}: {e}")
+            print(f"[Startup] WARNING: Failed to download {local_path.name}: {e}", flush=True)
 
 _download_models()
 # ---------------------------------------------------------------------------
