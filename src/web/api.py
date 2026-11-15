@@ -2,12 +2,46 @@
 
 import io
 import json
+import os
 import sys
+import urllib.request
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Auto-download model weights from HuggingFace Hub on first startup
+# ---------------------------------------------------------------------------
+def _download_models():
+    hf_user = os.environ.get("HF_USERNAME", "kirangowda07")
+    hf_repo  = os.environ.get("HF_REPO",     "fedssl-tb")
+    base_url = f"https://huggingface.co/{hf_user}/{hf_repo}/resolve/main"
+
+    _ROOT_HERE = Path(__file__).resolve().parents[2]
+    models = {
+        _ROOT_HERE / "experiments" / "main_experiment" / "checkpoints" / "flame_round_099.pt":
+            f"{base_url}/flame_round_099.pt",
+        _ROOT_HERE / "experiments" / "models" / "optimal_proto_head_k20.pt":
+            f"{base_url}/optimal_proto_head_k20.pt",
+    }
+    for local_path, url in models.items():
+        if local_path.exists() and local_path.stat().st_size > 1024:
+            print(f"[Startup] ✓ {local_path.name} already present")
+            continue
+        print(f"[Startup] Downloading {local_path.name} from HuggingFace...")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            urllib.request.urlretrieve(url, local_path)
+            print(f"[Startup] ✓ {local_path.name} downloaded ({local_path.stat().st_size // (1024*1024)} MB)")
+        except Exception as e:
+            print(f"[Startup] WARNING: Failed to download {local_path.name}: {e}")
+
+_download_models()
+# ---------------------------------------------------------------------------
 
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from PIL import Image
 from torch.utils.data import DataLoader
 
@@ -39,60 +73,107 @@ def _rooted_path(configured_path):
 def _find_checkpoint():
     search_dirs = [
         _rooted_path(config.logging.checkpoint_dir),
+        _ROOT / "experiments" / "stage2_round099_checkpoint",
+        _ROOT / "experiments" / "main_experiment" / "checkpoints",
         _ROOT / "experiments" / "results" / "30_round" / "checkpoints",
         _ROOT / "experiments" / "checkpoints" / "main",
+        _ROOT / "experiments" / "checkpoints",
     ]
     candidates = []
     for checkpoint_dir in search_dirs:
         if not checkpoint_dir.exists():
             continue
         candidates.extend([checkpoint_dir / "best_flame.pt", checkpoint_dir / "best_encoder.pt"])
-        candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), key=lambda p: int(p.stem.split("_")[-1]), reverse=True))
-        candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), key=lambda p: int(p.stem.split("_")[-1]), reverse=True))
-    return next((path for path in candidates if path.exists()), None)
+        def _get_round(p):
+            try:
+                return int(p.stem.split("_")[-1])
+            except Exception:
+                return 0
+        candidates.extend(sorted(checkpoint_dir.glob("flame_round_*.pt"), key=_get_round, reverse=True))
+        candidates.extend(sorted(checkpoint_dir.glob("encoder_round_*.pt"), key=_get_round, reverse=True))
+    return next((path for path in candidates if path.exists() and path.stat().st_size > 1000), None)
 
 
-def _load_fl_encoder():
-    model = get_encoder(config.model.backbone, config.model.embed_dim)
-    checkpoint_dir = _rooted_path(config.logging.checkpoint_dir)
+def _load_fl_models():
+    """Load both encoder and prototypical head with auto-detection from checkpoint."""
     checkpoint = _find_checkpoint()
+    checkpoint_state = {}
     if checkpoint is not None:
-        state = torch.load(checkpoint, map_location=device, weights_only=False)
-        model.load_state_dict(state.get("encoder_state_dict", state))
-        print(f"[Startup] FL encoder loaded: {checkpoint.name}")
+        try:
+            checkpoint_state = torch.load(checkpoint, map_location=device, weights_only=False)
+            print(f"[Startup] Found checkpoint: {checkpoint.name} ({checkpoint.stat().st_size // 1024} KB)")
+        except Exception as e:
+            print(f"[Startup] WARNING: Failed to read {checkpoint}: {e}")
+
+    # Auto-detect backbone and embed_dim from checkpoint config if present
+    ckpt_cfg = checkpoint_state.get("config")
+    backbone = config.model.backbone
+    embed_dim = config.model.embed_dim
+    if ckpt_cfg:
+        if isinstance(ckpt_cfg, dict):
+            backbone = ckpt_cfg.get("backbone", backbone)
+            embed_dim = ckpt_cfg.get("embed_dim", embed_dim)
+        elif hasattr(ckpt_cfg, "model"):
+            backbone = getattr(ckpt_cfg.model, "backbone", backbone)
+            embed_dim = getattr(ckpt_cfg.model, "embed_dim", embed_dim)
+
+    # 1. Initialize Encoder
+    enc = get_encoder(backbone, embed_dim)
+    if "encoder_state_dict" in checkpoint_state:
+        enc.load_state_dict(checkpoint_state["encoder_state_dict"])
+        print(f"[Startup] FL encoder loaded from {checkpoint.name} ({backbone}, {embed_dim}-dim)")
     else:
-        print(f"[Startup] WARNING: no FL checkpoint found in {checkpoint_dir}; using initialized encoder")
-    return model.to(device)
+        print(f"[Startup] WARNING: No encoder weights in checkpoint; using initialized encoder ({backbone}, {embed_dim}-dim)")
+    enc.to(device).eval()
+
+    # 2. Initialize and Load Prototypical Head
+    optimal_proto_path = _ROOT / "experiments" / "models" / "optimal_proto_head_k20.pt"
+    if optimal_proto_path.exists():
+        try:
+            proto_ckpt = torch.load(optimal_proto_path, map_location=device, weights_only=False)
+            proj_dim = int(proto_ckpt.get("projection_dim", 128))
+            proto_head = PrototypicalHead(embed_dim, 2, proj_dim).to(device)
+            proto_head.load_state_dict(proto_ckpt["proto_head_state_dict"])
+            proto_head.prototypes = proto_ckpt["prototypes"].to(device)
+            proto_head._prototypes_computed = True
+            proto_head.eval()
+            k_shot = proto_ckpt.get("k_shot", 20)
+            cos_sim = float(torch.nn.functional.cosine_similarity(proto_head.prototypes[0:1], proto_head.prototypes[1:2]).item())
+            print(f"[Startup] Loaded trained optimal prototypical head from {optimal_proto_path.name} (K={k_shot}, Prototype cos_sim={cos_sim:.4f})")
+            return enc, proto_head
+        except Exception as e:
+            print(f"[Startup] WARNING: Could not load {optimal_proto_path.name}: {e}")
+
+    # Fallback: Initialize and compute prototypes from support set
+    proj_dim = int(getattr(config.finetuning, "projection_dim", 128))
+    proto_head = PrototypicalHead(embed_dim, 2, proj_dim).to(device)
+    if "proto_head_state_dict" in checkpoint_state:
+        proto_head.load_state_dict(checkpoint_state["proto_head_state_dict"], strict=False)
+        print(f"[Startup] Restored proto head weights from {checkpoint.name} ({embed_dim} -> {proj_dim})")
+
+    dataset = ShenzhenDataset(str(_rooted_path(config.data.shenzhen_path)), transform=transform, image_size=config.data.image_size)
+    if len(dataset) == 0:
+        raise RuntimeError("Shenzhen dataset is empty or unavailable")
+
+    k_shot = int(getattr(config.finetuning, "few_shot_k", 20))
+    support_indices, _ = _sample_kshot(torch.as_tensor(dataset.get_labels()), k_shot, seed=int(config.finetuning.seed))
+    support_loader = DataLoader(torch.utils.data.Subset(dataset, support_indices.tolist()), batch_size=len(support_indices), shuffle=False)
+    support_images, support_labels = next(iter(support_loader))
+
+    with torch.no_grad():
+        proto_head.compute_prototypes(enc(support_images.to(device)), support_labels.to(device))
+    proto_head.eval()
+
+    norms = [round(float(x), 4) for x in proto_head.prototypes.norm(dim=1).tolist()]
+    print(f"[Startup] Prototypical head active ({k_shot}-shot support | Prototype norms: {norms})")
+    return enc, proto_head
 
 
 @app.on_event("startup")
 async def load_models():
     global encoder, classifier, model_error
     try:
-        encoder = _load_fl_encoder()
-        dataset = ShenzhenDataset(str(_rooted_path(config.data.shenzhen_path)), transform=transform, image_size=config.data.image_size)
-        if len(dataset) == 0:
-            raise RuntimeError("Shenzhen dataset is empty or unavailable")
-        labels = dataset.get_labels()
-        required = int(config.finetuning.few_shot_k)
-        if min(labels.count(0), labels.count(1)) < required:
-            raise RuntimeError(f"Shenzhen dataset needs at least {required} Normal and {required} TB images")
-        loader = DataLoader(dataset, batch_size=config.ssl.batch_size, shuffle=False)
-        checkpoint = _find_checkpoint()
-        checkpoint_state = torch.load(checkpoint, map_location=device, weights_only=False) if checkpoint else {}
-        head_state = checkpoint_state.get("proto_head_state_dict")
-        if head_state:
-            classifier = PrototypicalHead(config.model.embed_dim, 2, int(config.finetuning.projection_dim)).to(device)
-            classifier.load_state_dict(head_state, strict=False)
-            support_indices, _ = _sample_kshot(torch.as_tensor(dataset.get_labels()), int(config.finetuning.few_shot_k), seed=int(config.finetuning.seed))
-            support_loader = DataLoader(torch.utils.data.Subset(dataset, support_indices.tolist()), batch_size=len(support_indices), shuffle=False)
-            support_images, support_labels = next(iter(support_loader))
-            with torch.no_grad():
-                classifier.compute_prototypes(encoder(support_images.to(device)), support_labels.to(device))
-            print(f"[Startup] Restored saved prototype head from {checkpoint.name}")
-        else:
-            classifier, _ = finetune_local(0, encoder, loader, config, device)
-        classifier.eval()
+        encoder, classifier = _load_fl_models()
         model_error = None
         print("[Startup] Ready (canonical prototypical few-shot mode)")
     except Exception as error:
@@ -116,6 +197,7 @@ def health_check():
 def get_training_metrics():
     search_paths = [
         _rooted_path(config.logging.log_dir) / "training_log.json",
+        _ROOT / "experiments" / "main_experiment" / "logs" / "training_log.json",
         _ROOT / "experiments" / "results" / "30_round" / "logs" / "training_log.json",
         _ROOT / "experiments" / "results" / "30_round" / "logs" / "main_stage1" / "training_log.json",
         _ROOT / "experiments" / "logs" / "main" / "training_log.json",
@@ -176,6 +258,62 @@ def get_metadata():
     }
 
 
+@app.get("/evaluation")
+def get_evaluation_benchmarks():
+    return {
+        "peak_condition": {
+            "model": "ViT-Tiny (192-dim, patch16, MAE Pre-trained)",
+            "checkpoint": "flame_round_099.pt",
+            "rounds": 100,
+            "support_set": "Shenzhen Hospital (20-shot per class, 40 images total)",
+            "adaptation_epochs": 50,
+            "learning_rate": 0.001,
+            "optimizer": "AdamW",
+            "loss_function": "Prototypical Cross-Entropy (Temperature tau=10.0)",
+            "ensemble": "5-Head Multi-Support Bagging (Seeds 42, 101, 202, 303, 404)",
+        },
+        "peak_metrics": {
+            "auc": 0.8497,
+            "accuracy": 0.8029,
+            "specificity": 0.8439,
+            "sensitivity": 0.7640,
+            "balanced_accuracy": 0.8040,
+            "f1": 0.7979,
+        },
+        "single_head_peak": {
+            "auc": 0.8470,
+            "accuracy": 0.7878,
+            "specificity": 0.8268,
+            "sensitivity": 0.7500,
+            "balanced_accuracy": 0.7884,
+            "f1": 0.7783,
+        },
+        "canonical_nearest_centroid": {
+            "auc": 0.8126,
+            "accuracy": 0.7749,
+            "specificity": 0.7647,
+            "sensitivity": 0.7848,
+            "balanced_accuracy": 0.7748,
+            "f1": 0.7747,
+        },
+        "imagenet_baseline": {
+            "auc": 0.7676,
+            "accuracy": 0.7138,
+            "specificity": 0.7188,
+            "sensitivity": 0.7089,
+            "balanced_accuracy": 0.7138,
+            "f1": 0.7134,
+        },
+        "out_of_distribution_montgomery": {
+            "fedssl_r29_auc": 0.6364,
+            "fedssl_sensitivity": 0.6034,
+            "imagenet_auc": 0.5759,
+            "imagenet_sensitivity": 0.2759,
+            "clinical_insight": "ImageNet misses 72.4% of TB cases on out-of-domain scans; FedSSL preserves recall (>60%)."
+        }
+    }
+
+
 @app.post("/predict")
 async def predict_tb(file: UploadFile = File(...)):
     if encoder is None or classifier is None:
@@ -204,6 +342,25 @@ async def predict_tb(file: UploadFile = File(...)):
     except Exception as error:
         print(f"[Prediction] failed: {error}")
         raise HTTPException(status_code=500, detail="Prediction failed on the server") from error
+
+
+@app.get("/samples")
+def get_sample_images():
+    return [
+        {"id": "normal_1", "label": "Sample Healthy (Normal)", "type": "normal", "filename": "CHNCXR_0001_0.png"},
+        {"id": "normal_2", "label": "Sample Healthy #2", "type": "normal", "filename": "CHNCXR_0002_0.png"},
+        {"id": "tb_1", "label": "Sample TB Positive", "type": "tb", "filename": "CHNCXR_0327_1.png"},
+        {"id": "tb_2", "label": "Sample TB Positive #2", "type": "tb", "filename": "CHNCXR_0328_1.png"},
+    ]
+
+
+@app.get("/samples/{filename}")
+def get_sample_file(filename: str):
+    search_dir = _ROOT / "data" / "raw" / "Shenzhen" / "images" / "images"
+    target = search_dir / filename
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Sample not found")
+    return FileResponse(str(target), media_type="image/png")
 
 
 if __name__ == "__main__":

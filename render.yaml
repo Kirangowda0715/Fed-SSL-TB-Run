@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: fedssl-tb-api
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.web.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHONPATH
+        value: .
+      - key: HF_USERNAME
+        value: kirangowda07
+      - key: HF_REPO
+        value: fedssl-tb
