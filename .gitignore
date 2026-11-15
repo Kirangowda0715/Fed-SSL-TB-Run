@@ -20,8 +20,9 @@ experiments/checkpoints/main_stage1_vit_small_384/*
 !experiments/checkpoints/main_stage1_vit_small_384/.gitkeep
 experiments/vit_small/checkpoints/*.zip
 experiments/vit_small/checkpoints/*.pt
-experiments/vit_small/results/*.pt
 experiments/logs/*.pt
+experiments/logs/encoder_diagnostic_*.json
+experiments/logs/research_audit_*.json
 *.pt
 *.pth
 *.zip

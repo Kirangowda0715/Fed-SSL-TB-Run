@@ -2,6 +2,7 @@ services:
   - type: web
     name: fedssl-tb-api
     runtime: python
+    branch: research/dp-vit-tiny-60-rounds
     region: singapore
     plan: free
     buildCommand: pip install -r requirements.txt

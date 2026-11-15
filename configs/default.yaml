@@ -23,12 +23,12 @@ ssl:
   optimizer: adamw
 
 federated:
-  rounds: 30
-  aggregation: fedprox       # options: fedavg, fedprox
+  rounds: 100
+  aggregation: fedavg       # options: fedavg, fedprox
   fedprox_mu: 0.01
 
 finetuning:
-  few_shot_k: 5
+  few_shot_k: 20
   projection_dim: 128
   epochs: 30
   lr: 1.0e-3

@@ -22,5 +22,8 @@ export const api = {
   metrics: () => request('/metrics'),
   status: () => request('/status'),
   metadata: () => request('/metadata'),
+  evaluation: () => request('/evaluation'),
+  samples: () => request('/samples'),
+  sampleUrl: (filename) => `${API_URL}/samples/${filename}`,
   predict: (file) => { const body = new FormData(); body.append('file', file); return request('/predict', { method: 'POST', body }) },
 }
