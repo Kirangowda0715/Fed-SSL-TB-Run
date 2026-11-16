@@ -329,7 +329,10 @@ async def predict_tb(file: UploadFile = File(...)):
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="The uploaded image is empty")
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        image = Image.open(io.BytesIO(contents))
+        # Prevent OOM on 512MB RAM: downsample large clinical scans (3000x3000+) before conversion
+        image.thumbnail((512, 512), Image.Resampling.BILINEAR)
+        image = image.convert("RGB")
         tensor = transform(image).unsqueeze(0).to(device)
         with torch.no_grad():
             _, probabilities = classifier.predict(encoder(tensor))
@@ -363,6 +366,9 @@ def get_sample_images():
 
 @app.get("/samples/{filename}")
 def get_sample_file(filename: str):
+    bundled = Path(__file__).resolve().parent / "sample_images" / filename
+    if bundled.exists():
+        return FileResponse(str(bundled), media_type="image/png")
     search_dir = _ROOT / "data" / "raw" / "Shenzhen" / "images" / "images"
     target = search_dir / filename
     if not target.exists():
