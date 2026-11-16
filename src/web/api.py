@@ -1,5 +1,6 @@
 """FastAPI deployment using the canonical FLAME-inspired few-shot classifier."""
 
+import gc
 import io
 import json
 import os
@@ -147,6 +148,8 @@ def _load_fl_models():
             k_shot = proto_ckpt.get("k_shot", 20)
             cos_sim = float(torch.nn.functional.cosine_similarity(proto_head.prototypes[0:1], proto_head.prototypes[1:2]).item())
             print(f"[Startup] Loaded trained optimal prototypical head from {optimal_proto_path.name} (K={k_shot}, Prototype cos_sim={cos_sim:.4f})")
+            del checkpoint_state, proto_ckpt
+            gc.collect()
             return enc, proto_head
         except Exception as e:
             print(f"[Startup] WARNING: Could not load {optimal_proto_path.name}: {e}")
@@ -334,10 +337,13 @@ async def predict_tb(file: UploadFile = File(...)):
         image.thumbnail((512, 512), Image.Resampling.BILINEAR)
         image = image.convert("RGB")
         tensor = transform(image).unsqueeze(0).to(device)
-        with torch.no_grad():
-            _, probabilities = classifier.predict(encoder(tensor))
+        with torch.inference_mode():
+            feat = encoder(tensor)
+            _, probabilities = classifier.predict(feat)
         prob_tb = float(probabilities[0, 1])
         prob_normal = float(probabilities[0, 0])
+        del contents, image, tensor, feat
+        gc.collect()
         return {
             "filename": file.filename,
             "prediction": "TB Positive" if prob_tb >= 0.5 else "Normal",
