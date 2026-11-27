@@ -28,6 +28,7 @@ To overcome this triad, we developed **Fed-SSL-TB** (incorporating the **FLAME**
 | Clinical / Technical Bottleneck | Our Solution | Core Mechanism |
 | :--- | :--- | :--- |
 | **Data Siloing & Privacy Laws** | Federated Learning with Differential Privacy | **FedAvg + DP-SGD** (per-sample gradient clipping & Gaussian perturbation) |
+| **Client Drift under Non-IID Skew** | Federated Proximal Regularization | **FedProx Module** (client proximal term $\frac{\mu}{2}\|w - w_{\text{global}}\|^2$ with $\mu = 0.01$) |
 | **Lack of Radiologist Annotations** | Decentralized Self-Supervised Learning | **Masked Autoencoder (MAE)** with an aggressive 80% patch masking ratio |
 | **Edge Resource Constraints** | Zero-Backpropagation Edge Adaptation | **2-Layer Prototypical Metric Projection Head** with Cosine Similarity ($\tau=10.0$) |
 | **Support Sampling Instability** | Robust Ensembling | **5-Head Multi-Support Bagging Ensemble** across reference support sets |
@@ -44,7 +45,7 @@ To overcome this triad, we developed **Fed-SSL-TB** (incorporating the **FLAME**
 │  [   ...    ]  ──┤   (80% Patch Masking)      (Sample-Level Privacy Bound)         │   │
 │  [Hospital 10] ──┘                                                                 ▼   │
 │                         [Central Federated Server] ◄────────────────────────────────┘   │
-│                         (Weighted Parameter Averaging via FedAvg: θ_global)             │
+│                         (Weighted Parameter Averaging via FedAvg / FedProx: θ_global)   │
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                             │ Frozen Global Encoder (θ*)
 ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -182,7 +183,8 @@ differential_privacy:
 
 federated:
   rounds: 100                # Total federated communication rounds
-  aggregation: fedavg        # Strictly FedAvg (FedProx rejected under DP + AdamW)
+  aggregation: fedavg        # Modular aggregation: 'fedavg' (default for DP-SGD) or 'fedprox'
+  fedprox_mu: 0.01           # Proximal regularization weight for FedProx ablation runs
   fraction_clients: 1.0      # Full participation (10/10 hospitals active per round)
 
 finetuning:
@@ -308,32 +310,60 @@ $$\tilde{g} = \frac{1}{B} \left( \sum_{i=1}^B \bar{g}_i + \mathcal{N}(0, \sigma^
 
 3. **Rényi Differential Privacy (RDP) Accounting**: Cumulative privacy loss is tracked across communication rounds and client local epochs using Rényi DP composition.
 
-## 7.2 Why FedProx is Rejected Under DP + AdamW
+## 7.2 Modular Federated Strategies: FedAvg vs. FedProx in Multi-Track Ablations
 
-In conventional federated learning, FedProx introduces a proximal penalty to limit client drift:
+The framework implements both **FedAvg** and **FedProx** as distinct, modular federated optimization strategies. Rather than treating them as mutually exclusive, they serve complementary roles across dedicated ablation tracks:
+
+### Module A: FedProx for Mitigating Non-IID Client Drift
+In cross-silo medical imaging, statistical heterogeneity (modeled via Dirichlet non-IID partitions $\alpha = 1.0$) causes local client gradients to diverge from the global objective. To constrain this drift, the **FedProx** module introduces an explicit proximal regularization term directly into the local client loss:
 
 $$\mathcal{L}_{\text{FedProx}}(w) = \mathcal{L}_{\text{local}}(w) + \frac{\mu}{2} \|w - w_{\text{global}}\|^2$$
 
-> [!WARNING]
-> **Mathematical Incompatibility**: When FedProx is used with the **AdamW** adaptive optimizer, the gradient of the proximal term is scaled by the second-moment vector $v_t$:
+- **Proximal Regularization Weight ($\mu = 0.01$)**: Acts as a regularization constraint that penalizes the local encoder weights from straying excessively far from the broadcast global checkpoint $w_{\text{global}}$.
+- **Ablation Utility**: Used to analyze federated stability, convergence envelopes, and feature alignment across heterogeneous hospital silos without centralized data pooling.
+
+### Module B: FedAvg with Differential Privacy (DP-SGD)
+When the Differential Privacy engine (`src/client/dp_engine.py`) is engaged, **FedAvg** serves as the canonical aggregation protocol.
+
+> [!NOTE]
+> **Why FedAvg is Paired with DP-SGD under AdamW**: When local updates are optimized using **AdamW**, the gradient of the proximal penalty $\mu(w - w_{\text{global}})$ is divided element-wise by the running second-moment vector $\sqrt{v_t} + \epsilon$:
 >
 > $$\Delta w \propto \frac{\nabla \mathcal{L}(w) + \mu(w - w_{\text{global}})}{\sqrt{v_t} + \epsilon}$$
 >
-> Because $v_t$ adapts dynamically per parameter, the effective proximal contraction rate $\frac{\mu}{\sqrt{v_t}}$ is severely distorted across layers. Furthermore, this dynamic scaling breaks the strict $L_2$ sensitivity bounds required to calibrate DP Gaussian noise. Therefore, our architecture strictly enforces `aggregation: fedavg` during DP training.
+> Because $v_t$ adapts dynamically per parameter, the effective proximal contraction rate $\frac{\mu}{\sqrt{v_t}}$ varies unpredictably across layers, distorting the $L_2$ sensitivity bounds required to calibrate DP Gaussian noise. To preserve formal Rényi Differential Privacy accounting, the DP pre-training pipeline pairs DP-SGD strictly with standard **FedAvg**.
+
+### Multi-Track Ablation Architecture
+By decoupling the two algorithms into independent configuration tracks, the project evaluates:
+1. **Federated Optimization Track**: FedAvg vs FedProx ($\mu \in \{0.001, 0.01, 0.1\}$) across Dirichlet concentration shifts ($\alpha \in \{0.1, 0.5, 1.0\}$).
+2. **Privacy-Preserving Track**: DP-SGD coupled with FedAvg ($C=1.0, \sigma=1.1, \delta=10^{-5}$) to establish formal privacy bounds on medical foundation models.
 
 ---
 
 # PART 8: CENTRAL FEDERATED SERVER AGGREGATION
 
-The central federated coordinator (`src/server/server.py`) manages the lifecycle across 100 communication rounds:
+The central federated coordinator (`src/server/server.py`) manages the lifecycle across 100 communication rounds, dynamically supporting both aggregation modules:
+
+```python
+# Server Aggregation Dispatch (src/server/server.py)
+def aggregate(self, received_weights, sample_counts):
+    if self.aggregation == "fedavg":
+        return fedavg(received_weights, sample_counts)
+    elif self.aggregation == "fedprox":
+        global_weights = self.broadcast()
+        return fedprox(global_weights, received_weights, sample_counts, mu=self.fedprox_mu)
+```
+
+1. **FedAvg (Weighted Parameter Averaging)**:
+   $$\theta_{t+1} = \sum_{k=1}^M \left(\frac{n_k}{N}\right) \theta_{t+1}^k$$
+2. **FedProx (Server-side Proximal Weighting)**:
+   Averages client updates while applying client weighting and parameter delta tracking.
 
 ```
 Round t = 0 ... 99:
   1. Broadcast global encoder weights θ_t to all 10 hospitals.
-  2. Each hospital k trains locally for 1 epoch using DP-SGD (MAE loss).
+  2. Each hospital k trains locally for 1 epoch using DP-SGD (MAE loss) or FedProx proximal loss.
   3. Hospitals upload updated encoder weights θ_{t+1}^k to server (decoder discarded).
-  4. Server performs sample-weighted FedAvg aggregation:
-         θ_{t+1} = ∑_{k=1}^{10} (n_k / N) · θ_{t+1}^k
+  4. Server performs sample-weighted aggregation (FedAvg or FedProx).
   5. Save periodic checkpoints (`encoder_round_XXX.pt`).
 ```
 
@@ -534,7 +564,9 @@ npm run dev
 | `PrototypicalHead` | `src/models/proto_head.py` | 2-layer MLP projection ($192 \to 128 \to 128$), LOO prototypical loss, cosine metric ($\tau=10.0$) |
 | `DPEngine` | `src/client/dp_engine.py` | Per-sample $L_2$ gradient clipping ($C=1.0$), Gaussian perturbation ($\sigma=1.1$), RDP accountant |
 | `ssl_local_train()` | `src/client/ssl_train.py` | Executes local MAE self-supervised training loop with DP gradient updates on client data |
-| `FederatedServer` | `src/server/server.py` | Broadcasts global encoder, performs sample-weighted FedAvg aggregation, manages checkpoints |
+| `FederatedServer` | `src/server/server.py` | Broadcasts global encoder, performs sample-weighted FedAvg/FedProx aggregation, manages checkpoints |
+| `fedavg()` | `src/server/aggregator.py` | Computes sample-weighted average of client encoder parameters |
+| `fedprox()` | `src/server/aggregator.py` | Server-side FedProx aggregation tracking client parameter deltas |
 | `split_nih_to_hospitals()` | `src/datasets/splitter.py` | Partitions NIH dataset across 10 hospitals using Dirichlet non-IID distribution ($\alpha=1.0$) |
 | `ShenzhenDataset` | `src/datasets/loader.py` | PyTorch Dataset loader for Shenzhen Hospital radiographs with few-shot sampling |
 | `MontgomeryDataset` | `src/datasets/loader.py` | PyTorch Dataset loader for held-out Montgomery County out-of-distribution evaluation |

@@ -3,7 +3,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-EE4C2C.svg?style=flat&logo=pytorch)](https://pytorch.org)
 [![Backbone](https://img.shields.io/badge/Backbone-ViT--Tiny%20(5.7M)-00A86B.svg?style=flat)]()
 [![Privacy](https://img.shields.io/badge/Differential_Privacy-DP--SGD%20(RDP)-8A2BE2.svg?style=flat)]()
-[![Federation](https://img.shields.io/badge/Federation-FedAvg%20%7C%20Non--IID%20Dirichlet-blue.svg?style=flat)]()
+[![Federation](https://img.shields.io/badge/Federation-FedAvg%20%26%20FedProx%20%7C%20Non--IID%20Dirichlet-blue.svg?style=flat)]()
 [![Paper Assets](https://img.shields.io/badge/IEEE_Publication-300_DPI_Assets-gold.svg?style=flat)](paper_assets/README.md)
 
 **Fed-SSL-TB** is a decentralized, privacy-preserving medical imaging framework designed for computer-aided tuberculosis (TB) detection from chest radiographs. It addresses the triad of real-world clinical AI challenges:
@@ -46,7 +46,9 @@ The framework operates in two distinct, decoupled stages:
   - Per-sample gradient clipping to $L_2$ threshold $C = 1.0$.
   - Calibrated Gaussian perturbation $\mathcal{N}(0, \sigma^2 C^2 \mathbf{I})$ with $\sigma = 1.1$.
   - Exact cumulative Rényi Differential Privacy (RDP) state persistence across rounds and clients.
-- **Server Aggregation**: **FedAvg** across 10 non-IID hospital partitions (Dirichlet $\alpha = 1.0$). *(Note: DP + FedProx is explicitly rejected to prevent adaptive moment distortion under AdamW).*
+- **Server Aggregation & Modular Optimization**: The framework implements both **FedAvg** and **FedProx** as modular aggregation options for comparative ablation:
+  - **FedProx Module**: Incorporates a client-side proximal regularization penalty ($\frac{\mu}{2}\|w - w_{\text{global}}\|^2$ with $\mu = 0.01$) to explicitly restrict client drift under non-IID Dirichlet distribution skews ($\alpha = 1.0$).
+  - **FedAvg Module**: Serves as the primary aggregation baseline and the foundational aggregation protocol for our Differential Privacy (DP-SGD) runs, ensuring uncorrupted sensitivity calibration without AdamW adaptive moment distortion.
 
 ### 2. Stage 2: Few-Shot Prototypical Metric Adaptation
 - **Zero-Backpropagation Edge Inference**: Rural diagnostic clinics with limited hardware use a frozen global encoder ($\theta^*$).
@@ -247,7 +249,9 @@ To ensure resilient operation within restricted edge/cloud environments (such as
 ## 🔒 Privacy & Optimization Guarantees
 
 1. **Sampling Scheme Reality**: PyTorch's `DataLoader(..., shuffle=True)` partitions data into batches without replacement. Analytical Rényi DP formulas derived strictly under Poisson subsampling do not formally apply to without-replacement shuffling. To maintain strict scientific integrity, formal $(\epsilon, \delta)$ values are marked `unsupported_under_shuffle_without_replacement`, while exact parameter tracking ($T, C, \sigma, \delta$) is recorded without heuristic approximations.
-2. **Why FedAvg is Required for DP**: Theoretical FedProx adds a deterministic proximal penalty $\mu(w_t - w_{\text{global}})$. When passed through **AdamW**, the proximal penalty is adaptively scaled by $\frac{1}{\sqrt{v_t}}$, non-linearly distorting the contraction rate across parameters and invalidating DP sensitivity calibration. Hence, `aggregation: fedavg` is strictly enforced for DP runs.
+2. **Modular Aggregation: FedAvg vs. FedProx in Ablation Studies**: Both federated aggregation algorithms are implemented as first-class modules:
+   - **FedProx Ablation Module**: Evaluates client-side proximal regularization ($\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{MAE}} + \frac{\mu}{2}\|w - w_{\text{global}}\|^2$, typically with $\mu = 0.01$) on local client updates to constrain client drift when institutional data partitions exhibit high statistical non-IID heterogeneity.
+   - **FedAvg DP Baseline**: When Differential Privacy (DP-SGD) is enabled, FedAvg is designated as the calibrated aggregation protocol. Theoretical FedProx adds a deterministic proximal penalty $\mu(w_t - w_{\text{global}})$, which, when passed through the **AdamW** adaptive optimizer, is non-linearly scaled by $\frac{1}{\sqrt{v_t}}$ across parameters, disrupting calibrated per-sample $L_2$ sensitivity bounds. Thus, FedProx and FedAvg are treated as complementary, dedicated ablation tracks in the experimental study.
 3. **Hardware PRNG vs CSPRNG**: Noise is generated using PyTorch's internal Philox/MT19937 generator seeded with 64 bits of OS entropy (`secrets.randbits(64)`). While statistically calibrated and reproducible for ML simulations, it is not a certified cryptographic CSPRNG.
 
 ---
